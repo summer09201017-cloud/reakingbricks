@@ -43,9 +43,19 @@
             <option value="hard">挑戰</option>
           </select>
         </label>
+        <label>
+          主題
+          <select id="themeSelect">
+            <option value="classic">經典立體</option>
+            <option value="neon">霓虹</option>
+            <option value="candy">糖果</option>
+            <option value="stone">石磚</option>
+          </select>
+        </label>
       </div>
       <div class="utility-actions">
         <button id="settingsBtn" type="button" class="secondary-btn">設定</button>
+        <button id="versionBtn" type="button" class="secondary-btn">版本</button>
         <button id="updateBtn" type="button" class="secondary-btn" hidden>更新遊戲</button>
         <button id="installBtn" type="button" class="secondary-btn" hidden>安裝 APP</button>
       </div>
@@ -54,6 +64,10 @@
 
     <section class="canvas-wrap">
       <canvas id="gameCanvas" width="900" height="560" aria-label="打磚塊遊戲畫面"></canvas>
+      <div class="progress-wrap" aria-label="關卡進度">
+        <div class="progress-track"><div id="levelProgress" class="progress-fill"></div></div>
+        <span id="remainingBricks">剩餘 0</span>
+      </div>
       <div class="overlay" id="overlay" aria-live="polite">
         <h2 id="overlayTitle">打磚塊</h2>
         <p id="overlayText">按空白鍵或開始遊戲發射球。</p>
@@ -61,12 +75,14 @@
         <div class="overlay-actions" id="overlayActions" hidden>
           <button id="resumeBtn" type="button">繼續</button>
           <button id="restartBtn" type="button">重新開始</button>
+          <button id="quickRestartBtn" type="button">3 秒重開</button>
         </div>
         <div class="settings-menu" id="settingsMenu" hidden>
           <label><input id="musicToggle" type="checkbox"> 音樂</label>
           <label><input id="sfxToggle" type="checkbox"> 音效</label>
           <label><input id="hapticsToggle" type="checkbox"> 震動</label>
         </div>
+        <div class="version-panel" id="versionPanel" hidden></div>
       </div>
     </section>
 

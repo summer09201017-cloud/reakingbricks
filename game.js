@@ -14,23 +14,36 @@ const fireBtn = document.getElementById("fireBtn");
 const installBtn = document.getElementById("installBtn");
 const updateBtn = document.getElementById("updateBtn");
 const settingsBtn = document.getElementById("settingsBtn");
+const versionBtn = document.getElementById("versionBtn");
 const difficultySelect = document.getElementById("difficultySelect");
 const modeSelect = document.getElementById("modeSelect");
+const themeSelect = document.getElementById("themeSelect");
 const musicToggle = document.getElementById("musicToggle");
 const sfxToggle = document.getElementById("sfxToggle");
 const hapticsToggle = document.getElementById("hapticsToggle");
 const runStatsEl = document.getElementById("runStats");
 const achievementList = document.getElementById("achievementList");
+const levelProgressEl = document.getElementById("levelProgress");
+const remainingBricksEl = document.getElementById("remainingBricks");
 const overlay = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlayTitle");
 const overlayText = document.getElementById("overlayText");
 const overlayStats = document.getElementById("overlayStats");
 const overlayActions = document.getElementById("overlayActions");
 const settingsMenu = document.getElementById("settingsMenu");
+const versionPanel = document.getElementById("versionPanel");
 const resumeBtn = document.getElementById("resumeBtn");
 const restartBtn = document.getElementById("restartBtn");
+const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 
+const APP_VERSION = "1.2.0";
+const CHANGELOG = [
+  "新增主題切換與立體磚塊視覺",
+  "新增 Combo 連擊加分",
+  "新增快速重開倒數",
+  "升級結算畫面與關卡進度提示",
+];
 const BALL_RADIUS = 8;
 const BIG_BALL_RADIUS = 13;
 const MAX_BALLS = 6;
@@ -75,6 +88,37 @@ const MODES = {
   daily: "每日挑戰",
 };
 
+const THEMES = {
+  classic: {
+    label: "經典立體",
+    background: ["#0f345f", "#102a4b", "#0a1b34"],
+    paddle: ["#fff7b0", "#ffb84d"],
+    ball: ["#ffffff", "#8be9ff", "#2ea8ff"],
+    palette: ["#55c1ff", "#63e6be", "#ffe66d", "#ffaf54", "#ff7f7f"],
+  },
+  neon: {
+    label: "霓虹",
+    background: ["#151b44", "#24114f", "#09091f"],
+    paddle: ["#9dffe5", "#ff65d8"],
+    ball: ["#ffffff", "#68fff0", "#ff4fd8"],
+    palette: ["#00e5ff", "#00ffc8", "#ffe66d", "#ff4fd8", "#a071ff"],
+  },
+  candy: {
+    label: "糖果",
+    background: ["#6f9fff", "#72d6ff", "#ffbfd9"],
+    paddle: ["#ffffff", "#ff8ab3"],
+    ball: ["#ffffff", "#fff0a8", "#ff8ab3"],
+    palette: ["#ff8ab3", "#92f2d0", "#fff08a", "#9ed8ff", "#d7a7ff"],
+  },
+  stone: {
+    label: "石磚",
+    background: ["#52606d", "#334e68", "#102a43"],
+    paddle: ["#d9e2ec", "#829ab1"],
+    ball: ["#ffffff", "#bcccdc", "#486581"],
+    palette: ["#bcccdc", "#9fb3c8", "#d9e2ec", "#829ab1", "#f0b429"],
+  },
+};
+
 const POWERUP_TYPES = [
   { type: "laser", label: "GUN", color: "#ff93db" },
   { type: "expand", label: "WIDE", color: "#98f5b4" },
@@ -107,6 +151,7 @@ const defaultPreferences = {
   haptics: true,
   difficulty: "normal",
   mode: "classic",
+  theme: "classic",
 };
 
 const defaultRecords = {
@@ -130,8 +175,12 @@ const state = {
   gunTimer: 0,
   shotCooldown: 0,
   bigBallTimer: 0,
+  combo: 0,
+  comboTimer: 0,
+  restartCountdown: 0,
   mode: preferences.mode in MODES ? preferences.mode : "classic",
   difficulty: preferences.difficulty in DIFFICULTIES ? preferences.difficulty : "normal",
+  theme: preferences.theme in THEMES ? preferences.theme : "classic",
 };
 
 const keys = {
@@ -262,6 +311,9 @@ function createSessionStats() {
     bulletsHit: 0,
     powerupsCaught: 0,
     powerupsSpawned: 0,
+    maxCombo: 0,
+    totalComboBonus: 0,
+    totalBricks: 0,
     livesLost: 0,
     levelsCleared: 0,
     highestLevel: 1,
@@ -272,6 +324,62 @@ function createSessionStats() {
 
 function getDifficultyConfig() {
   return DIFFICULTIES[state.difficulty] || DIFFICULTIES.normal;
+}
+
+function getThemeConfig() {
+  return THEMES[state.theme] || THEMES.classic;
+}
+
+function applyTheme() {
+  document.body.dataset.theme = state.theme;
+}
+
+function countAliveBricks() {
+  return bricks.reduce((count, brick) => count + (brick.alive ? 1 : 0), 0);
+}
+
+function updateLevelProgress() {
+  const total = sessionStats.totalBricks || bricks.length || 1;
+  const remaining = countAliveBricks();
+  const cleared = clamp((total - remaining) / total, 0, 1);
+  levelProgressEl.style.width = `${Math.round(cleared * 100)}%`;
+  remainingBricksEl.textContent = `剩餘 ${remaining}`;
+}
+
+function getScoreGapText() {
+  const gap = Math.max(0, records.bestScore - state.score);
+  if (gap === 0) {
+    return "刷新或追平";
+  }
+  return `差 ${gap}`;
+}
+
+function getRunGrade() {
+  const score = state.score;
+  const level = sessionStats.highestLevel;
+  const combo = sessionStats.maxCombo;
+  if (score >= 1800 || level >= 6 || combo >= 24) {
+    return ["S", "傳奇反彈"];
+  }
+  if (score >= 1100 || level >= 4 || combo >= 16) {
+    return ["A", "節奏高手"];
+  }
+  if (score >= 650 || level >= 3 || combo >= 10) {
+    return ["B", "穩定破壞者"];
+  }
+  if (score >= 300 || level >= 2 || combo >= 5) {
+    return ["C", "手感暖機"];
+  }
+  return ["D", "再來一局"];
+}
+
+function renderVersionPanel() {
+  versionPanel.innerHTML = `
+    <h3>版本 ${APP_VERSION}</h3>
+    <ul>
+      ${CHANGELOG.map((item) => `<li>${item}</li>`).join("")}
+    </ul>
+  `;
 }
 
 function getBallRadius() {
@@ -430,6 +538,7 @@ function updateHud() {
   bestScoreEl.textContent = String(records.bestScore);
   livesEl.textContent = String(state.lives);
   levelEl.textContent = String(state.level);
+  updateLevelProgress();
   renderRunStats();
   renderModeLabel();
 }
@@ -454,12 +563,17 @@ function getAccuracyText() {
 }
 
 function getOverlayStatItems() {
+  const [grade, title] = getRunGrade();
   return [
+    ["評級", `${grade} / ${title}`],
     ["分數", state.score],
     ["最高分", records.bestScore],
+    ["距離最高", getScoreGapText()],
     ["最高關卡", sessionStats.highestLevel],
     ["破壞磚塊", sessionStats.bricksDestroyed],
     ["寶物", sessionStats.powerupsCaught],
+    ["最大 Combo", sessionStats.maxCombo],
+    ["Combo 加分", sessionStats.totalComboBonus],
     ["射擊命中", getAccuracyText()],
   ];
 }
@@ -470,6 +584,8 @@ function renderRunStats() {
     ["每日最高", records.bestDailyScore],
     ["最高關", Math.max(records.bestLevel, sessionStats.highestLevel)],
     ["本局寶物", sessionStats.powerupsCaught],
+    ["最大 Combo", sessionStats.maxCombo],
+    ["Combo 加分", sessionStats.totalComboBonus],
     ["射擊命中", getAccuracyText()],
   ].map(([label, value]) => `<p><span>${label}</span><strong>${value}</strong></p>`).join("");
 }
@@ -532,6 +648,7 @@ function setOverlay(title, text, options = {}) {
     visible = true,
     showActions = false,
     showSettings = false,
+    showVersion = false,
     stats = null,
   } = options;
 
@@ -540,6 +657,10 @@ function setOverlay(title, text, options = {}) {
   overlay.classList.toggle("hidden", !visible);
   overlayActions.hidden = !showActions;
   settingsMenu.hidden = !showSettings;
+  versionPanel.hidden = !showVersion;
+  if (showVersion) {
+    renderVersionPanel();
+  }
 
   if (stats) {
     overlayStats.innerHTML = stats.map(([label, value]) => `<p>${label}<br><strong>${value}</strong></p>`).join("");
@@ -597,6 +718,42 @@ function syncSettingsControls() {
   hapticsToggle.checked = preferences.haptics;
   difficultySelect.value = state.difficulty;
   modeSelect.value = state.mode;
+  themeSelect.value = state.theme;
+  applyTheme();
+}
+
+let restartCountdownTimerId = null;
+
+function cancelRestartCountdown() {
+  if (restartCountdownTimerId !== null) {
+    window.clearInterval(restartCountdownTimerId);
+    restartCountdownTimerId = null;
+  }
+  state.restartCountdown = 0;
+  quickRestartBtn.textContent = "3 秒重開";
+}
+
+function startRestartCountdown() {
+  cancelRestartCountdown();
+  state.running = false;
+  stopMusic();
+  state.restartCountdown = 3;
+  quickRestartBtn.textContent = "取消倒數";
+  setOverlay("準備重開", "3 秒後自動開始新局。", {
+    showActions: true,
+    showSettings: false,
+    stats: getOverlayStatItems(),
+  });
+
+  restartCountdownTimerId = window.setInterval(() => {
+    state.restartCountdown -= 1;
+    overlayText.textContent = `${state.restartCountdown} 秒後自動開始新局。`;
+    if (state.restartCountdown <= 0) {
+      cancelRestartCountdown();
+      restartGame();
+      startOrResume();
+    }
+  }, 1000);
 }
 
 function setBallRadius(radius) {
@@ -662,7 +819,7 @@ function createBricks(level) {
   const brickHeight = 24;
   const brickWidth = (canvas.width - side * 2 - gap * (cols - 1)) / cols;
   const hp = Math.min(4, 1 + Math.floor((level - 1) / 2) + getDifficultyConfig().hpBonus);
-  const palette = ["#55c1ff", "#63e6be", "#ffe66d", "#ffaf54", "#ff7f7f"];
+  const palette = getThemeConfig().palette;
 
   bricks = [];
   for (let row = 0; row < rows; row += 1) {
@@ -689,6 +846,14 @@ function createBricks(level) {
         moveRange: special === "moving" ? 14 + random() * 12 : 0,
       });
     }
+  }
+}
+
+function refreshBrickTheme() {
+  const palette = getThemeConfig().palette;
+  for (let i = 0; i < bricks.length; i += 1) {
+    const brick = bricks[i];
+    brick.color = palette[(brick.row + brick.col) % palette.length];
   }
 }
 
@@ -719,11 +884,14 @@ function resetPositions() {
 }
 
 function restartGame() {
+  cancelRestartCountdown();
   state.running = false;
   state.gameOver = false;
   state.score = 0;
   state.lives = getDifficultyConfig().lives;
   state.level = 1;
+  state.combo = 0;
+  state.comboTimer = 0;
   sessionStats = createSessionStats();
   sessionStats.highestLevel = 1;
   powerupSpawnCounts = createPowerupCounter();
@@ -740,6 +908,7 @@ function restartGame() {
   saveRecords();
 
   createBricks(state.level);
+  sessionStats.totalBricks = bricks.length;
   resetPositions();
   updateHud();
   syncSettingsControls();
@@ -787,6 +956,8 @@ function loseLife() {
   state.lives -= 1;
   sessionStats.livesLost += 1;
   sessionStats.levelLivesLost += 1;
+  state.combo = 0;
+  state.comboTimer = 0;
   clearTemporaryPowerups();
   powerups = [];
   bullets = [];
@@ -828,6 +999,8 @@ function nextLevel() {
 
   sessionStats.levelsCleared += 1;
   sessionStats.levelLivesLost = 0;
+  state.combo = 0;
+  state.comboTimer = 0;
   state.level += 1;
   sessionStats.highestLevel = Math.max(sessionStats.highestLevel, state.level);
   records.bestLevel = Math.max(records.bestLevel, sessionStats.highestLevel);
@@ -838,6 +1011,7 @@ function nextLevel() {
   bullets = [];
 
   createBricks(state.level);
+  sessionStats.totalBricks = bricks.length;
   resetPositions();
   setOverlay(`第 ${state.level} 關`, "節奏不錯，下一關會加入更多變化。", {
     showActions: true,
@@ -1121,6 +1295,24 @@ function destroyBrick(brick, options = {}) {
   }
 }
 
+function registerCombo(options = {}) {
+  if (options.fromExplosion) {
+    return 0;
+  }
+
+  state.combo += 1;
+  state.comboTimer = 2.6;
+  sessionStats.maxCombo = Math.max(sessionStats.maxCombo, state.combo);
+
+  const bonus = state.combo >= 3 ? Math.min(40, Math.floor(state.combo / 3) * 3) : 0;
+  if (bonus > 0) {
+    sessionStats.totalComboBonus += bonus;
+    spawnFloatingText(`Combo x${state.combo} +${bonus}`, canvas.width * 0.5, canvas.height - 78, "#ffe680");
+  }
+
+  return bonus;
+}
+
 function damageBrick(brick, options = {}) {
   if (!brick.alive) {
     return;
@@ -1133,11 +1325,12 @@ function damageBrick(brick, options = {}) {
   }
 
   brick.hp -= 1;
+  const comboBonus = registerCombo(options);
   if (brick.hp <= 0) {
-    addScore(options.fromExplosion ? 6 : 10);
+    addScore((options.fromExplosion ? 6 : 10) + comboBonus);
     destroyBrick(brick, options);
   } else {
-    addScore(options.fromExplosion ? 2 : 4);
+    addScore((options.fromExplosion ? 2 : 4) + comboBonus);
   }
 }
 
@@ -1295,6 +1488,14 @@ function updateTimers(deltaSec) {
     state.shotCooldown = Math.max(0, state.shotCooldown - deltaSec);
   }
 
+  if (state.comboTimer > 0) {
+    state.comboTimer = Math.max(0, state.comboTimer - deltaSec);
+    if (state.comboTimer === 0) {
+      state.combo = 0;
+      updateHud();
+    }
+  }
+
   if (state.gunTimer > 0) {
     const before = state.gunTimer;
     state.gunTimer = Math.max(0, state.gunTimer - deltaSec);
@@ -1314,10 +1515,11 @@ function updateTimers(deltaSec) {
 }
 
 function drawBackground() {
+  const theme = getThemeConfig();
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, "#0f345f");
-  gradient.addColorStop(0.55, "#102a4b");
-  gradient.addColorStop(1, "#0a1b34");
+  gradient.addColorStop(0, theme.background[0]);
+  gradient.addColorStop(0.55, theme.background[1]);
+  gradient.addColorStop(1, theme.background[2]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -1372,9 +1574,20 @@ function drawBricks() {
       continue;
     }
 
-    drawRoundedRect(brick.x, brick.y, brick.width, brick.height, 6);
-    ctx.fillStyle = getBrickColor(brick);
+    const baseColor = getBrickColor(brick);
+    drawRoundedRect(brick.x + 4, brick.y + 5, brick.width, brick.height, 6);
+    ctx.fillStyle = "#00152d55";
     ctx.fill();
+
+    drawRoundedRect(brick.x, brick.y, brick.width, brick.height, 6);
+    const brickGradient = ctx.createLinearGradient(brick.x, brick.y, brick.x, brick.y + brick.height);
+    brickGradient.addColorStop(0, "#ffffffaa");
+    brickGradient.addColorStop(0.18, baseColor);
+    brickGradient.addColorStop(1, baseColor);
+    ctx.fillStyle = brickGradient;
+    ctx.fill();
+    ctx.fillStyle = "#00000022";
+    ctx.fillRect(brick.x + 4, brick.y + brick.height - 5, brick.width - 8, 4);
     ctx.strokeStyle = "#ffffff66";
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -1424,9 +1637,10 @@ function drawBullets() {
 
 function drawPaddle() {
   drawRoundedRect(paddle.x, paddle.y, paddle.width, paddle.height, 7);
+  const theme = getThemeConfig();
   const gradient = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x, paddle.y + paddle.height);
-  gradient.addColorStop(0, "#fff7b0");
-  gradient.addColorStop(1, "#ffb84d");
+  gradient.addColorStop(0, theme.paddle[0]);
+  gradient.addColorStop(1, theme.paddle[1]);
   ctx.fillStyle = gradient;
   ctx.fill();
 
@@ -1446,10 +1660,11 @@ function drawPaddle() {
 function drawBalls() {
   for (let i = 0; i < balls.length; i += 1) {
     const ball = balls[i];
+    const theme = getThemeConfig();
     const gradient = ctx.createRadialGradient(ball.x - 2, ball.y - 2, 2, ball.x, ball.y, ball.radius + 2);
-    gradient.addColorStop(0, "#ffffff");
-    gradient.addColorStop(0.55, "#8be9ff");
-    gradient.addColorStop(1, "#2ea8ff");
+    gradient.addColorStop(0, theme.ball[0]);
+    gradient.addColorStop(0.55, theme.ball[1]);
+    gradient.addColorStop(1, theme.ball[2]);
 
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
@@ -1490,6 +1705,9 @@ function drawStatus() {
   }
   if (state.mode === "daily") {
     activeEffects.push("每日");
+  }
+  if (state.combo >= 3) {
+    activeEffects.push(`Combo x${state.combo}`);
   }
 
   if (activeEffects.length > 0) {
@@ -1552,6 +1770,19 @@ function openSettingsMenu() {
   setOverlay("設定", "調整音樂、音效與震動，設定會自動保存。", {
     showActions: true,
     showSettings: true,
+    stats: getOverlayStatItems(),
+  });
+}
+
+function openVersionPanel() {
+  if (state.running) {
+    pauseGame(false);
+  }
+
+  setOverlay("更新內容", `目前版本 ${APP_VERSION}`, {
+    showActions: true,
+    showSettings: false,
+    showVersion: true,
     stats: getOverlayStatItems(),
   });
 }
@@ -1625,6 +1856,11 @@ window.addEventListener("keydown", (event) => {
       pauseGame(true);
     }
   }
+
+  if (key === "r") {
+    event.preventDefault();
+    startRestartCountdown();
+  }
 });
 
 window.addEventListener("keyup", (event) => {
@@ -1677,7 +1913,16 @@ startBtn.addEventListener("click", togglePlayState);
 toggleBtn.addEventListener("click", togglePlayState);
 resumeBtn.addEventListener("click", startOrResume);
 restartBtn.addEventListener("click", restartGame);
+quickRestartBtn.addEventListener("click", () => {
+  if (state.restartCountdown > 0) {
+    cancelRestartCountdown();
+    pauseGame(false);
+    return;
+  }
+  startRestartCountdown();
+});
 settingsBtn.addEventListener("click", openSettingsMenu);
+versionBtn.addEventListener("click", openVersionPanel);
 
 fireBtn.addEventListener("click", () => {
   unlockAudioFromGesture();
@@ -1696,6 +1941,15 @@ difficultySelect.addEventListener("change", () => {
 modeSelect.addEventListener("change", () => {
   state.mode = modeSelect.value;
   restartForModeChange();
+});
+
+themeSelect.addEventListener("change", () => {
+  state.theme = themeSelect.value;
+  preferences.theme = state.theme;
+  savePreferences();
+  applyTheme();
+  refreshBrickTheme();
+  updateHud();
 });
 
 bindHoldButton(leftBtn, () => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "breakout-pwa-v2";
+const CACHE_NAME = "breakout-pwa-v3";
 const ASSETS = [
   "./",
   "./index.html",
