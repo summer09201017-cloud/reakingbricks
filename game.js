@@ -1,23 +1,125 @@
-﻿const canvas = document.getElementById("gameCanvas");
+const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 const scoreEl = document.getElementById("score");
+const bestScoreEl = document.getElementById("bestScore");
 const livesEl = document.getElementById("lives");
 const levelEl = document.getElementById("level");
+const modeLabel = document.getElementById("modeLabel");
 const startBtn = document.getElementById("startBtn");
 const toggleBtn = document.getElementById("toggleBtn");
 const leftBtn = document.getElementById("leftBtn");
 const rightBtn = document.getElementById("rightBtn");
 const fireBtn = document.getElementById("fireBtn");
 const installBtn = document.getElementById("installBtn");
-const installHint = document.getElementById("installHint");
+const updateBtn = document.getElementById("updateBtn");
+const settingsBtn = document.getElementById("settingsBtn");
+const difficultySelect = document.getElementById("difficultySelect");
+const modeSelect = document.getElementById("modeSelect");
+const musicToggle = document.getElementById("musicToggle");
+const sfxToggle = document.getElementById("sfxToggle");
+const hapticsToggle = document.getElementById("hapticsToggle");
+const runStatsEl = document.getElementById("runStats");
+const achievementList = document.getElementById("achievementList");
 const overlay = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlayTitle");
 const overlayText = document.getElementById("overlayText");
+const overlayStats = document.getElementById("overlayStats");
+const overlayActions = document.getElementById("overlayActions");
+const settingsMenu = document.getElementById("settingsMenu");
+const resumeBtn = document.getElementById("resumeBtn");
+const restartBtn = document.getElementById("restartBtn");
+const installHint = document.getElementById("installHint");
 
 const BALL_RADIUS = 8;
 const BIG_BALL_RADIUS = 13;
 const MAX_BALLS = 6;
+const POWERUP_LIMIT_PER_TYPE = 2;
+const STORAGE_KEYS = {
+  preferences: "breakout.preferences.v2",
+  records: "breakout.records.v2",
+};
+
+const DIFFICULTIES = {
+  easy: {
+    label: "休閒",
+    lives: 4,
+    paddleWidth: 164,
+    ballSpeed: 4.25,
+    dropRate: 0.4,
+    hpBonus: 0,
+    specialRate: 0.08,
+  },
+  normal: {
+    label: "標準",
+    lives: 3,
+    paddleWidth: 136,
+    ballSpeed: 4.8,
+    dropRate: 0.3,
+    hpBonus: 0,
+    specialRate: 0.14,
+  },
+  hard: {
+    label: "挑戰",
+    lives: 2,
+    paddleWidth: 116,
+    ballSpeed: 5.35,
+    dropRate: 0.24,
+    hpBonus: 1,
+    specialRate: 0.2,
+  },
+};
+
+const MODES = {
+  classic: "經典模式",
+  daily: "每日挑戰",
+};
+
+const POWERUP_TYPES = [
+  { type: "laser", label: "GUN", color: "#ff93db" },
+  { type: "expand", label: "WIDE", color: "#98f5b4" },
+  { type: "bigball", label: "BIG", color: "#ffcf70" },
+  { type: "multiball", label: "x2", color: "#ffe680" },
+  { type: "slow", label: "SLOW", color: "#8ed8ff" },
+];
+
+const ACHIEVEMENTS = [
+  { id: "first_powerup", title: "初次收集", description: "吃到第一個寶物" },
+  { id: "score_500", title: "五百分", description: "單局分數達到 500" },
+  { id: "level_3", title: "闖關者", description: "抵達第 3 關" },
+  { id: "no_miss_level", title: "穩如節拍", description: "無失誤通過一關" },
+  { id: "collector", title: "收藏家", description: "單局吃到 5 個寶物" },
+  { id: "daily_player", title: "每日報到", description: "遊玩每日挑戰" },
+  { id: "laser_ace", title: "雷射手感", description: "單局雷射命中 10 次" },
+  { id: "hard_mode", title: "硬派玩家", description: "挑戰難度抵達第 2 關" },
+];
+
+const stars = Array.from({ length: 20 }, () => ({
+  x: Math.random() * canvas.width,
+  y: Math.random() * (canvas.height * 0.52),
+  r: 0.8 + Math.random() * 2.2,
+  alpha: 0.15 + Math.random() * 0.35,
+}));
+
+const defaultPreferences = {
+  music: true,
+  sfx: true,
+  haptics: true,
+  difficulty: "normal",
+  mode: "classic",
+};
+
+const defaultRecords = {
+  bestScore: 0,
+  bestLevel: 1,
+  bestDailyScore: 0,
+  gamesPlayed: 0,
+  achievements: [],
+};
+
+const preferences = loadStoredObject(STORAGE_KEYS.preferences, defaultPreferences);
+const records = loadStoredObject(STORAGE_KEYS.records, defaultRecords);
+let unlockedAchievements = new Set(records.achievements || []);
 
 const state = {
   running: false,
@@ -28,6 +130,8 @@ const state = {
   gunTimer: 0,
   shotCooldown: 0,
   bigBallTimer: 0,
+  mode: preferences.mode in MODES ? preferences.mode : "classic",
+  difficulty: preferences.difficulty in DIFFICULTIES ? preferences.difficulty : "normal",
 };
 
 const keys = {
@@ -49,24 +153,10 @@ let bricks = [];
 let powerups = [];
 let bullets = [];
 let floatingTexts = [];
-
-const POWERUP_DROP_RATE = 0.3;
-const POWERUP_LIMIT_PER_TYPE = 2;
-const POWERUP_TYPES = [
-  { type: "laser", label: "GUN", color: "#ff93db" },
-  { type: "expand", label: "WIDE", color: "#98f5b4" },
-  { type: "bigball", label: "BIG", color: "#ffcf70" },
-  { type: "multiball", label: "x2", color: "#ffe680" },
-  { type: "slow", label: "SLOW", color: "#8ed8ff" },
-];
 let powerupSpawnCounts = createPowerupCounter();
-
-const stars = Array.from({ length: 20 }, () => ({
-  x: Math.random() * canvas.width,
-  y: Math.random() * (canvas.height * 0.52),
-  r: 0.8 + Math.random() * 2.2,
-  alpha: 0.15 + Math.random() * 0.35,
-}));
+let sessionStats = createSessionStats();
+let seededRandom = Math.random;
+let dailyKey = getTodayKey();
 
 let audioCtx = null;
 let musicGain = null;
@@ -75,12 +165,80 @@ let musicTimerId = null;
 let nextMusicTime = 0;
 let musicStepIndex = 0;
 let deferredInstallPrompt = null;
+let waitingServiceWorker = null;
+let refreshingForUpdate = false;
 
 const MUSIC_STEP = 0.22;
 const MUSIC_PATTERN = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46];
 
+function loadStoredObject(key, fallback) {
+  try {
+    const stored = window.localStorage.getItem(key);
+    if (!stored) {
+      return { ...fallback };
+    }
+    return { ...fallback, ...JSON.parse(stored) };
+  } catch {
+    return { ...fallback };
+  }
+}
+
+function saveStoredObject(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // localStorage can be unavailable in private browsing; the game still runs.
+  }
+}
+
+function savePreferences() {
+  saveStoredObject(STORAGE_KEYS.preferences, preferences);
+}
+
+function saveRecords() {
+  records.achievements = Array.from(unlockedAchievements);
+  saveStoredObject(STORAGE_KEYS.records, records);
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function hashString(input) {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function mulberry32(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value += 0x6d2b79f5;
+    let t = value;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function getTodayKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function resetRandomSource() {
+  dailyKey = getTodayKey();
+  seededRandom = mulberry32(hashString(`${dailyKey}:${state.difficulty}:breakout`));
+}
+
+function random() {
+  return state.mode === "daily" ? seededRandom() : Math.random();
 }
 
 function rotateVector(vx, vy, angle) {
@@ -96,6 +254,26 @@ function createPowerupCounter() {
   return Object.fromEntries(POWERUP_TYPES.map((powerup) => [powerup.type, 0]));
 }
 
+function createSessionStats() {
+  return {
+    bricksHit: 0,
+    bricksDestroyed: 0,
+    shotsFired: 0,
+    bulletsHit: 0,
+    powerupsCaught: 0,
+    powerupsSpawned: 0,
+    livesLost: 0,
+    levelsCleared: 0,
+    highestLevel: 1,
+    levelLivesLost: 0,
+    powerupCounts: createPowerupCounter(),
+  };
+}
+
+function getDifficultyConfig() {
+  return DIFFICULTIES[state.difficulty] || DIFFICULTIES.normal;
+}
+
 function getBallRadius() {
   return state.bigBallTimer > 0 ? BIG_BALL_RADIUS : BALL_RADIUS;
 }
@@ -109,6 +287,12 @@ function createBall(x, y, stuck = true, vx = 0, vy = 0) {
     vy,
     stuck,
   };
+}
+
+function vibrate(pattern) {
+  if (preferences.haptics && "vibrate" in navigator) {
+    navigator.vibrate(pattern);
+  }
 }
 
 function ensureAudioReady() {
@@ -139,13 +323,17 @@ function ensureAudioReady() {
 }
 
 function startMusic() {
+  if (!preferences.music) {
+    return;
+  }
+
   ensureAudioReady();
   if (!audioCtx || !musicGain || musicTimerId !== null) {
     return;
   }
 
   const schedule = () => {
-    if (!audioCtx || !state.running) {
+    if (!audioCtx || !state.running || !preferences.music) {
       stopMusic();
       return;
     }
@@ -153,7 +341,6 @@ function startMusic() {
     const lookAhead = 0.7;
     while (nextMusicTime < audioCtx.currentTime + lookAhead) {
       const frequency = MUSIC_PATTERN[musicStepIndex % MUSIC_PATTERN.length];
-
       const oscillator = audioCtx.createOscillator();
       const envelope = audioCtx.createGain();
       oscillator.type = "sine";
@@ -190,7 +377,7 @@ function stopMusic() {
 }
 
 function playBrickHitSound() {
-  if (!audioCtx || !sfxGain) {
+  if (!preferences.sfx || !audioCtx || !sfxGain) {
     return;
   }
 
@@ -224,16 +411,143 @@ function unlockAudioFromGesture() {
   }
 }
 
-function updateHud() {
-  scoreEl.textContent = String(state.score);
-  livesEl.textContent = String(state.lives);
-  levelEl.textContent = String(state.level);
+function addScore(points) {
+  state.score += points;
+  if (state.score > records.bestScore) {
+    records.bestScore = state.score;
+    saveRecords();
+  }
+  if (state.mode === "daily" && state.score > records.bestDailyScore) {
+    records.bestDailyScore = state.score;
+    saveRecords();
+  }
+  evaluateAchievements();
+  updateHud();
 }
 
-function setOverlay(title, text, visible = true) {
+function updateHud() {
+  scoreEl.textContent = String(state.score);
+  bestScoreEl.textContent = String(records.bestScore);
+  livesEl.textContent = String(state.lives);
+  levelEl.textContent = String(state.level);
+  renderRunStats();
+  renderModeLabel();
+}
+
+function renderModeLabel() {
+  const difficulty = getDifficultyConfig().label;
+  modeLabel.textContent = state.mode === "daily" ? `${MODES.daily} ${dailyKey} / ${difficulty}` : `${MODES.classic} / ${difficulty}`;
+}
+
+function formatPercent(value) {
+  if (!Number.isFinite(value)) {
+    return "0%";
+  }
+  return `${Math.round(value * 100)}%`;
+}
+
+function getAccuracyText() {
+  if (sessionStats.shotsFired === 0) {
+    return "未開火";
+  }
+  return formatPercent(sessionStats.bulletsHit / sessionStats.shotsFired);
+}
+
+function getOverlayStatItems() {
+  return [
+    ["分數", state.score],
+    ["最高分", records.bestScore],
+    ["最高關卡", sessionStats.highestLevel],
+    ["破壞磚塊", sessionStats.bricksDestroyed],
+    ["寶物", sessionStats.powerupsCaught],
+    ["射擊命中", getAccuracyText()],
+  ];
+}
+
+function renderRunStats() {
+  runStatsEl.innerHTML = [
+    ["最高分", records.bestScore],
+    ["每日最高", records.bestDailyScore],
+    ["最高關", Math.max(records.bestLevel, sessionStats.highestLevel)],
+    ["本局寶物", sessionStats.powerupsCaught],
+    ["射擊命中", getAccuracyText()],
+  ].map(([label, value]) => `<p><span>${label}</span><strong>${value}</strong></p>`).join("");
+}
+
+function renderAchievements() {
+  achievementList.innerHTML = ACHIEVEMENTS.map((achievement) => {
+    const unlocked = unlockedAchievements.has(achievement.id);
+    return `
+      <div class="achievement ${unlocked ? "" : "locked"}">
+        <span><strong>${achievement.title}</strong><br>${achievement.description}</span>
+        <span>${unlocked ? "完成" : "未解鎖"}</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function unlockAchievement(id) {
+  if (unlockedAchievements.has(id)) {
+    return;
+  }
+
+  const achievement = ACHIEVEMENTS.find((item) => item.id === id);
+  if (!achievement) {
+    return;
+  }
+
+  unlockedAchievements.add(id);
+  saveRecords();
+  renderAchievements();
+  spawnFloatingText(`成就：${achievement.title}`, canvas.width * 0.5, canvas.height * 0.78, "#ffe680");
+  vibrate([30, 40, 30]);
+}
+
+function evaluateAchievements() {
+  if (sessionStats.powerupsCaught >= 1) {
+    unlockAchievement("first_powerup");
+  }
+  if (state.score >= 500) {
+    unlockAchievement("score_500");
+  }
+  if (sessionStats.highestLevel >= 3) {
+    unlockAchievement("level_3");
+  }
+  if (sessionStats.powerupsCaught >= 5) {
+    unlockAchievement("collector");
+  }
+  if (state.mode === "daily") {
+    unlockAchievement("daily_player");
+  }
+  if (sessionStats.bulletsHit >= 10) {
+    unlockAchievement("laser_ace");
+  }
+  if (state.difficulty === "hard" && sessionStats.highestLevel >= 2) {
+    unlockAchievement("hard_mode");
+  }
+}
+
+function setOverlay(title, text, options = {}) {
+  const {
+    visible = true,
+    showActions = false,
+    showSettings = false,
+    stats = null,
+  } = options;
+
   overlayTitle.textContent = title;
   overlayText.textContent = text;
   overlay.classList.toggle("hidden", !visible);
+  overlayActions.hidden = !showActions;
+  settingsMenu.hidden = !showSettings;
+
+  if (stats) {
+    overlayStats.innerHTML = stats.map(([label, value]) => `<p>${label}<br><strong>${value}</strong></p>`).join("");
+    overlayStats.hidden = false;
+  } else {
+    overlayStats.innerHTML = "";
+    overlayStats.hidden = true;
+  }
 }
 
 function setInstallHint(message = "") {
@@ -259,6 +573,12 @@ function updateInstallButton() {
   installBtn.hidden = isStandalone() || (!showOnMobile && !canPromptInstall);
 }
 
+function showUpdatePrompt(worker) {
+  waitingServiceWorker = worker;
+  updateBtn.hidden = false;
+  setInstallHint("有新版遊戲可以更新，按「更新遊戲」即可套用。");
+}
+
 function syncButton() {
   if (state.gameOver) {
     startBtn.textContent = "重新開始";
@@ -269,6 +589,14 @@ function syncButton() {
   const label = state.running ? "暫停" : "開始遊戲";
   startBtn.textContent = label;
   toggleBtn.textContent = label;
+}
+
+function syncSettingsControls() {
+  musicToggle.checked = preferences.music;
+  sfxToggle.checked = preferences.sfx;
+  hapticsToggle.checked = preferences.haptics;
+  difficultySelect.value = state.difficulty;
+  modeSelect.value = state.mode;
 }
 
 function setBallRadius(radius) {
@@ -308,6 +636,23 @@ function drawRoundedRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
+function pickSpecialBrick(level) {
+  const config = getDifficultyConfig();
+  const chance = Math.min(0.3, config.specialRate + (level - 1) * 0.015);
+  if (level < 2 || random() > chance) {
+    return null;
+  }
+
+  const roll = random();
+  if (roll < 0.36) {
+    return "bomb";
+  }
+  if (roll < 0.68) {
+    return "steel";
+  }
+  return "moving";
+}
+
 function createBricks(level) {
   const rows = 6;
   const cols = 10;
@@ -316,20 +661,32 @@ function createBricks(level) {
   const gap = 8;
   const brickHeight = 24;
   const brickWidth = (canvas.width - side * 2 - gap * (cols - 1)) / cols;
-  const hp = Math.min(3, 1 + Math.floor((level - 1) / 2));
+  const hp = Math.min(4, 1 + Math.floor((level - 1) / 2) + getDifficultyConfig().hpBonus);
   const palette = ["#55c1ff", "#63e6be", "#ffe66d", "#ffaf54", "#ff7f7f"];
 
   bricks = [];
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
+      const special = pickSpecialBrick(level);
+      const baseX = side + col * (brickWidth + gap);
+      const baseY = top + row * (brickHeight + gap);
+      const specialHp = special === "steel" ? hp + 1 : hp;
+
       bricks.push({
-        x: side + col * (brickWidth + gap),
-        y: top + row * (brickHeight + gap),
+        x: baseX,
+        baseX,
+        y: baseY,
+        row,
+        col,
         width: brickWidth,
         height: brickHeight,
-        hp,
+        hp: specialHp,
+        maxHp: specialHp,
         color: palette[(row + col) % palette.length],
         alive: true,
+        special,
+        movePhase: random() * Math.PI * 2,
+        moveRange: special === "moving" ? 14 + random() * 12 : 0,
       });
     }
   }
@@ -348,8 +705,8 @@ function resetBallsOnPaddle() {
 }
 
 function launchBall(ball) {
-  const baseSpeed = 4.8 + (state.level - 1) * 0.35;
-  const horizontal = (Math.random() * 0.8 + 0.55) * (Math.random() < 0.5 ? -1 : 1);
+  const baseSpeed = getDifficultyConfig().ballSpeed + (state.level - 1) * 0.35;
+  const horizontal = (random() * 0.8 + 0.55) * (random() < 0.5 ? -1 : 1);
   ball.vx = baseSpeed * horizontal;
   ball.vy = -Math.sqrt(Math.max(4, baseSpeed * baseSpeed - ball.vx * ball.vx));
   ball.stuck = false;
@@ -365,21 +722,33 @@ function restartGame() {
   state.running = false;
   state.gameOver = false;
   state.score = 0;
-  state.lives = 3;
+  state.lives = getDifficultyConfig().lives;
   state.level = 1;
+  sessionStats = createSessionStats();
+  sessionStats.highestLevel = 1;
+  powerupSpawnCounts = createPowerupCounter();
   clearTemporaryPowerups();
   stopMusic();
+  resetRandomSource();
 
-  paddle.width = 136;
+  paddle.width = getDifficultyConfig().paddleWidth;
   powerups = [];
   bullets = [];
   floatingTexts = [];
-  powerupSpawnCounts = createPowerupCounter();
+
+  records.gamesPlayed += 1;
+  saveRecords();
 
   createBricks(state.level);
   resetPositions();
   updateHud();
-  setOverlay("打磚塊", "按空白鍵、開始遊戲或手機按鈕發射球。");
+  syncSettingsControls();
+  evaluateAchievements();
+  setOverlay("打磚塊", "按空白鍵、開始遊戲或手機按鈕發射球。", {
+    showActions: true,
+    showSettings: true,
+    stats: getOverlayStatItems(),
+  });
   syncButton();
 }
 
@@ -399,53 +768,82 @@ function startOrResume() {
 
   state.running = true;
   startMusic();
-  setOverlay("", "", false);
+  setOverlay("", "", { visible: false });
   syncButton();
 }
 
-function pauseGame() {
+function pauseGame(showSettings = true) {
   state.running = false;
   stopMusic();
-  setOverlay("已暫停", "按空白鍵、開始遊戲或手機按鈕繼續。");
+  setOverlay("已暫停", "可以調整設定、重新開始，或繼續這一局。", {
+    showActions: true,
+    showSettings,
+    stats: getOverlayStatItems(),
+  });
   syncButton();
 }
 
 function loseLife() {
   state.lives -= 1;
+  sessionStats.livesLost += 1;
+  sessionStats.levelLivesLost += 1;
   clearTemporaryPowerups();
   powerups = [];
   bullets = [];
   updateHud();
+  vibrate([80, 40, 80]);
 
   if (state.lives <= 0) {
     state.running = false;
     stopMusic();
     state.gameOver = true;
-    setOverlay("遊戲結束", `最終分數：${state.score}。按重新開始再玩一次。`);
+    setOverlay("遊戲結束", `最終分數：${state.score}。最高分：${records.bestScore}。`, {
+      showActions: true,
+      showSettings: true,
+      stats: getOverlayStatItems(),
+    });
     syncButton();
+    saveRecords();
     return;
   }
 
   state.running = false;
   stopMusic();
   resetBallsOnPaddle();
-  setOverlay("失去一命", `剩餘生命：${state.lives}。按空白鍵或開始遊戲繼續。`);
+  setOverlay("失去一命", `剩餘生命：${state.lives}。按空白鍵或開始遊戲繼續。`, {
+    showActions: true,
+    showSettings: false,
+    stats: getOverlayStatItems(),
+  });
   syncButton();
 }
 
 function nextLevel() {
   state.running = false;
   stopMusic();
+
+  if (sessionStats.levelLivesLost === 0) {
+    unlockAchievement("no_miss_level");
+  }
+
+  sessionStats.levelsCleared += 1;
+  sessionStats.levelLivesLost = 0;
   state.level += 1;
-  state.score += 50;
+  sessionStats.highestLevel = Math.max(sessionStats.highestLevel, state.level);
+  records.bestLevel = Math.max(records.bestLevel, sessionStats.highestLevel);
+  saveRecords();
+  addScore(50);
   clearTemporaryPowerups();
   powerups = [];
   bullets = [];
-  updateHud();
 
   createBricks(state.level);
   resetPositions();
-  setOverlay(`第 ${state.level} 關`, "太好了，按空白鍵或開始遊戲進入下一關。");
+  setOverlay(`第 ${state.level} 關`, "節奏不錯，下一關會加入更多變化。", {
+    showActions: true,
+    showSettings: false,
+    stats: getOverlayStatItems(),
+  });
   syncButton();
 }
 
@@ -485,8 +883,24 @@ function updatePaddle(step) {
   }
 }
 
+function updateBricks(step) {
+  for (let i = 0; i < bricks.length; i += 1) {
+    const brick = bricks[i];
+    if (!brick.alive || brick.special !== "moving") {
+      continue;
+    }
+
+    brick.movePhase += 0.018 * step * (1 + state.level * 0.04);
+    brick.x = clamp(
+      brick.baseX + Math.sin(brick.movePhase) * brick.moveRange,
+      8,
+      canvas.width - brick.width - 8,
+    );
+  }
+}
+
 function spawnPowerup(brick) {
-  if (Math.random() > POWERUP_DROP_RATE) {
+  if (random() > getDifficultyConfig().dropRate) {
     return;
   }
 
@@ -498,8 +912,9 @@ function spawnPowerup(brick) {
     return;
   }
 
-  const pick = availablePowerups[Math.floor(Math.random() * availablePowerups.length)];
+  const pick = availablePowerups[Math.floor(random() * availablePowerups.length)];
   powerupSpawnCounts[pick.type] = (powerupSpawnCounts[pick.type] ?? 0) + 1;
+  sessionStats.powerupsSpawned += 1;
   powerups.push({
     x: brick.x + brick.width * 0.5,
     y: brick.y + brick.height * 0.5,
@@ -543,7 +958,7 @@ function createSplitBallsFrom(source) {
 
   if (Math.abs(baseVx) < 0.05 && Math.abs(baseVy) < 0.05) {
     const speed = 5.3;
-    baseVx = speed * 0.62 * (Math.random() < 0.5 ? -1 : 1);
+    baseVx = speed * 0.62 * (random() < 0.5 ? -1 : 1);
     baseVy = -Math.sqrt(speed * speed - baseVx * baseVx);
   }
 
@@ -574,8 +989,12 @@ function createSplitBallsFrom(source) {
 }
 
 function applyPowerup(powerup) {
+  sessionStats.powerupsCaught += 1;
+  sessionStats.powerupCounts[powerup.type] = (sessionStats.powerupCounts[powerup.type] ?? 0) + 1;
+  vibrate(25);
+
   if (powerup.type === "expand") {
-    paddle.width = clamp(paddle.width + 34, 100, 250);
+    paddle.width = clamp(paddle.width + 34, 100, 260);
     paddle.x = clamp(paddle.x, 0, canvas.width - paddle.width);
     spawnFloatingText("板子變長", powerup.x, paddle.y - 12, "#98f5b4");
   } else if (powerup.type === "bigball") {
@@ -609,6 +1028,7 @@ function applyPowerup(powerup) {
     spawnFloatingText("雷射啟動", powerup.x, paddle.y - 12, "#ff9ce0");
   }
 
+  evaluateAchievements();
   updateHud();
 }
 
@@ -679,26 +1099,66 @@ function handlePaddleCollision(ball) {
   ball.y = paddle.y - ball.radius - 0.1;
 
   const hitPosition = (ball.x - (paddle.x + paddle.width * 0.5)) / (paddle.width * 0.5);
-  const speed = Math.min(9.5, Math.hypot(ball.vx, ball.vy) * 1.02);
+  const speed = Math.min(9.8, Math.hypot(ball.vx, ball.vy) * 1.02);
   const angle = hitPosition * (Math.PI / 3);
 
   ball.vx = speed * Math.sin(angle);
   ball.vy = -Math.abs(speed * Math.cos(angle));
 }
 
-function onBrickDamaged(brick) {
-  playBrickHitSound();
-  brick.hp -= 1;
-  state.score += brick.hp <= 0 ? 10 : 4;
-
-  if (brick.hp <= 0) {
-    brick.alive = false;
-    spawnPowerup(brick);
+function destroyBrick(brick, options = {}) {
+  if (!brick.alive) {
+    return;
   }
 
-  updateHud();
+  brick.alive = false;
+  sessionStats.bricksDestroyed += 1;
+  if (!options.fromExplosion) {
+    spawnPowerup(brick);
+  }
+  if (brick.special === "bomb" && !options.fromExplosion) {
+    explodeBrick(brick);
+  }
+}
 
-  if (bricks.every((item) => !item.alive)) {
+function damageBrick(brick, options = {}) {
+  if (!brick.alive) {
+    return;
+  }
+
+  if (!options.fromExplosion) {
+    playBrickHitSound();
+    vibrate(8);
+    sessionStats.bricksHit += 1;
+  }
+
+  brick.hp -= 1;
+  if (brick.hp <= 0) {
+    addScore(options.fromExplosion ? 6 : 10);
+    destroyBrick(brick, options);
+  } else {
+    addScore(options.fromExplosion ? 2 : 4);
+  }
+}
+
+function explodeBrick(source) {
+  spawnFloatingText("爆破", source.x + source.width * 0.5, source.y, "#ffb4a8");
+  vibrate([25, 25, 25]);
+  for (let i = 0; i < bricks.length; i += 1) {
+    const brick = bricks[i];
+    if (!brick.alive || brick === source) {
+      continue;
+    }
+
+    const isNeighbor = Math.abs(brick.row - source.row) <= 1 && Math.abs(brick.col - source.col) <= 1;
+    if (isNeighbor) {
+      damageBrick(brick, { fromExplosion: true });
+    }
+  }
+}
+
+function checkLevelCleared() {
+  if (state.running && bricks.every((item) => !item.alive)) {
     nextLevel();
   }
 }
@@ -712,7 +1172,6 @@ function handleBrickCollision(ball) {
 
     const closestX = clamp(ball.x, brick.x, brick.x + brick.width);
     const closestY = clamp(ball.y, brick.y, brick.y + brick.height);
-
     const dx = ball.x - closestX;
     const dy = ball.y - closestY;
 
@@ -722,7 +1181,6 @@ function handleBrickCollision(ball) {
 
     const prevX = ball.x - ball.vx;
     const prevY = ball.y - ball.vy;
-
     const hitVertical = prevY + ball.radius <= brick.y || prevY - ball.radius >= brick.y + brick.height;
     const hitHorizontal = prevX + ball.radius <= brick.x || prevX - ball.radius >= brick.x + brick.width;
 
@@ -732,7 +1190,8 @@ function handleBrickCollision(ball) {
       ball.vy *= -1;
     }
 
-    onBrickDamaged(brick);
+    damageBrick(brick);
+    checkLevelCleared();
 
     const speed = Math.hypot(ball.vx, ball.vy);
     const targetSpeed = Math.min(9.8, speed * 1.003);
@@ -754,7 +1213,9 @@ function fireBullets() {
   const y = paddle.y - 6;
   bullets.push({ x: paddle.x + 14, y, w: 4, h: 13, vy: -11.2 });
   bullets.push({ x: paddle.x + paddle.width - 14, y, w: 4, h: 13, vy: -11.2 });
+  sessionStats.shotsFired += 2;
   state.shotCooldown = 0.2;
+  updateHud();
 }
 
 function handleBulletCollision(bullet) {
@@ -771,7 +1232,10 @@ function handleBulletCollision(bullet) {
       continue;
     }
 
-    onBrickDamaged(brick);
+    sessionStats.bulletsHit += 1;
+    damageBrick(brick);
+    checkLevelCleared();
+    evaluateAchievements();
     return true;
   }
 
@@ -866,6 +1330,41 @@ function drawBackground() {
   }
 }
 
+function getBrickColor(brick) {
+  if (brick.special === "steel") {
+    return "#aab7c7";
+  }
+  if (brick.special === "bomb") {
+    return "#ff7f7f";
+  }
+  if (brick.special === "moving") {
+    return "#b39cff";
+  }
+  if (brick.hp >= 3) {
+    return "#f94144";
+  }
+  if (brick.hp === 2) {
+    return "#f8961e";
+  }
+  return brick.color;
+}
+
+function getBrickLabel(brick) {
+  if (brick.special === "steel") {
+    return "S";
+  }
+  if (brick.special === "bomb") {
+    return "!";
+  }
+  if (brick.special === "moving") {
+    return "↔";
+  }
+  if (brick.hp > 1) {
+    return String(brick.hp);
+  }
+  return "";
+}
+
 function drawBricks() {
   for (let i = 0; i < bricks.length; i += 1) {
     const brick = bricks[i];
@@ -874,26 +1373,19 @@ function drawBricks() {
     }
 
     drawRoundedRect(brick.x, brick.y, brick.width, brick.height, 6);
-
-    if (brick.hp >= 3) {
-      ctx.fillStyle = "#f94144";
-    } else if (brick.hp === 2) {
-      ctx.fillStyle = "#f8961e";
-    } else {
-      ctx.fillStyle = brick.color;
-    }
-
+    ctx.fillStyle = getBrickColor(brick);
     ctx.fill();
     ctx.strokeStyle = "#ffffff66";
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    if (brick.hp > 1) {
+    const label = getBrickLabel(brick);
+    if (label) {
       ctx.fillStyle = "#0e1f33";
       ctx.font = "bold 14px Trebuchet MS";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(String(brick.hp), brick.x + brick.width * 0.5, brick.y + brick.height * 0.55);
+      ctx.fillText(label, brick.x + brick.width * 0.5, brick.y + brick.height * 0.55);
     }
   }
 }
@@ -996,6 +1488,9 @@ function drawStatus() {
   if (state.bigBallTimer > 0) {
     activeEffects.push(`巨球：${state.bigBallTimer.toFixed(1)} 秒`);
   }
+  if (state.mode === "daily") {
+    activeEffects.push("每日");
+  }
 
   if (activeEffects.length > 0) {
     ctx.textAlign = "right";
@@ -1024,6 +1519,7 @@ function gameLoop(ts) {
   updatePaddle(step);
 
   if (state.running) {
+    updateBricks(step);
     updateBalls(step);
     if (state.running) {
       updatePowerups(step);
@@ -1041,10 +1537,23 @@ function togglePlayState() {
   unlockAudioFromGesture();
   setInstallHint("");
   if (state.running) {
-    pauseGame();
+    pauseGame(true);
   } else {
     startOrResume();
   }
+}
+
+function openSettingsMenu() {
+  if (state.running) {
+    pauseGame(true);
+    return;
+  }
+
+  setOverlay("設定", "調整音樂、音效與震動，設定會自動保存。", {
+    showActions: true,
+    showSettings: true,
+    stats: getOverlayStatItems(),
+  });
 }
 
 function bindHoldButton(button, onPress, onRelease) {
@@ -1068,15 +1577,35 @@ function bindHoldButton(button, onPress, onRelease) {
   button.addEventListener("pointercancel", release);
 }
 
+function updatePreference(key, value) {
+  preferences[key] = value;
+  savePreferences();
+  if (key === "music" && !value) {
+    stopMusic();
+  }
+  if (key === "music" && value && state.running) {
+    startMusic();
+  }
+}
+
+function restartForModeChange() {
+  preferences.mode = state.mode;
+  preferences.difficulty = state.difficulty;
+  savePreferences();
+  restartGame();
+}
+
 window.addEventListener("keydown", (event) => {
   unlockAudioFromGesture();
   const key = event.key.toLowerCase();
 
   if (key === "arrowleft" || key === "a") {
+    event.preventDefault();
     keys.left = true;
   }
 
   if (key === "arrowright" || key === "d") {
+    event.preventDefault();
     keys.right = true;
   }
 
@@ -1088,6 +1617,13 @@ window.addEventListener("keydown", (event) => {
   if (key === "j" || key === "f") {
     event.preventDefault();
     fireBullets();
+  }
+
+  if (key === "escape" || key === "p") {
+    event.preventDefault();
+    if (state.running) {
+      pauseGame(true);
+    }
   }
 });
 
@@ -1105,7 +1641,7 @@ window.addEventListener("keyup", (event) => {
 
 window.addEventListener("blur", () => {
   if (state.running) {
-    pauseGame();
+    pauseGame(false);
   }
   keys.left = false;
   keys.right = false;
@@ -1139,10 +1675,27 @@ canvas.addEventListener("touchmove", (event) => {
 
 startBtn.addEventListener("click", togglePlayState);
 toggleBtn.addEventListener("click", togglePlayState);
+resumeBtn.addEventListener("click", startOrResume);
+restartBtn.addEventListener("click", restartGame);
+settingsBtn.addEventListener("click", openSettingsMenu);
 
 fireBtn.addEventListener("click", () => {
   unlockAudioFromGesture();
   fireBullets();
+});
+
+musicToggle.addEventListener("change", () => updatePreference("music", musicToggle.checked));
+sfxToggle.addEventListener("change", () => updatePreference("sfx", sfxToggle.checked));
+hapticsToggle.addEventListener("change", () => updatePreference("haptics", hapticsToggle.checked));
+
+difficultySelect.addEventListener("change", () => {
+  state.difficulty = difficultySelect.value;
+  restartForModeChange();
+});
+
+modeSelect.addEventListener("change", () => {
+  state.mode = modeSelect.value;
+  restartForModeChange();
 });
 
 bindHoldButton(leftBtn, () => {
@@ -1174,6 +1727,12 @@ installBtn.addEventListener("click", async () => {
   }
 });
 
+updateBtn.addEventListener("click", () => {
+  if (waitingServiceWorker) {
+    waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
+  }
+});
+
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
   deferredInstallPrompt = event;
@@ -1188,13 +1747,39 @@ window.addEventListener("appinstalled", () => {
 });
 
 if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshingForUpdate) {
+      return;
+    }
+    refreshingForUpdate = true;
+    window.location.reload();
+  });
+
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {
+    navigator.serviceWorker.register("./sw.js").then((registration) => {
+      if (registration.waiting && navigator.serviceWorker.controller) {
+        showUpdatePrompt(registration.waiting);
+      }
+
+      registration.addEventListener("updatefound", () => {
+        const newWorker = registration.installing;
+        if (!newWorker) {
+          return;
+        }
+
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdatePrompt(newWorker);
+          }
+        });
+      });
+    }).catch(() => {
       setInstallHint("若要使用安裝功能，請用本機伺服器或 HTTPS 開啟遊戲。");
     });
   });
 }
 
 restartGame();
+renderAchievements();
 updateInstallButton();
 requestAnimationFrame(gameLoop);

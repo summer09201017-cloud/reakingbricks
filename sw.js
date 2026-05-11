@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "breakout-pwa-v1";
+const CACHE_NAME = "breakout-pwa-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -12,7 +12,7 @@ const ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)),
   );
 });
 
@@ -24,6 +24,12 @@ self.addEventListener("activate", (event) => {
         .map((key) => caches.delete(key)),
     )).then(() => self.clients.claim()),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {

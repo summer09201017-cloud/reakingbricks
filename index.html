@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
@@ -16,17 +16,39 @@
     <header class="top-bar">
       <div class="title-group">
         <h1>打磚塊</h1>
-        <p class="subtitle">手機、平板與電腦都能玩的彈球挑戰</p>
+        <p class="subtitle" id="modeLabel">經典模式</p>
       </div>
       <div class="stats">
         <p>分數 <span id="score">0</span></p>
+        <p>最高 <span id="bestScore">0</span></p>
         <p>生命 <span id="lives">3</span></p>
         <p>關卡 <span id="level">1</span></p>
       </div>
     </header>
 
-    <section class="utility-bar" aria-label="安裝與說明">
-      <button id="installBtn" type="button" class="secondary-btn" hidden>安裝 APP</button>
+    <section class="utility-bar" aria-label="遊戲設定與安裝">
+      <div class="quick-settings">
+        <label>
+          模式
+          <select id="modeSelect">
+            <option value="classic">經典</option>
+            <option value="daily">每日挑戰</option>
+          </select>
+        </label>
+        <label>
+          難度
+          <select id="difficultySelect">
+            <option value="easy">休閒</option>
+            <option value="normal">標準</option>
+            <option value="hard">挑戰</option>
+          </select>
+        </label>
+      </div>
+      <div class="utility-actions">
+        <button id="settingsBtn" type="button" class="secondary-btn">設定</button>
+        <button id="updateBtn" type="button" class="secondary-btn" hidden>更新遊戲</button>
+        <button id="installBtn" type="button" class="secondary-btn" hidden>安裝 APP</button>
+      </div>
       <p id="installHint" class="install-hint" hidden></p>
     </section>
 
@@ -35,6 +57,16 @@
       <div class="overlay" id="overlay" aria-live="polite">
         <h2 id="overlayTitle">打磚塊</h2>
         <p id="overlayText">按空白鍵或開始遊戲發射球。</p>
+        <div class="overlay-stats" id="overlayStats" hidden></div>
+        <div class="overlay-actions" id="overlayActions" hidden>
+          <button id="resumeBtn" type="button">繼續</button>
+          <button id="restartBtn" type="button">重新開始</button>
+        </div>
+        <div class="settings-menu" id="settingsMenu" hidden>
+          <label><input id="musicToggle" type="checkbox"> 音樂</label>
+          <label><input id="sfxToggle" type="checkbox"> 音效</label>
+          <label><input id="hapticsToggle" type="checkbox"> 震動</label>
+        </div>
       </div>
     </section>
 
@@ -45,6 +77,32 @@
       <button id="rightBtn" type="button" class="touch-btn">右移</button>
     </section>
 
+    <section class="dashboard-grid" aria-label="遊戲資訊">
+      <article class="info-panel">
+        <h2>寶物</h2>
+        <div class="legend-list">
+          <p><span class="legend-chip laser">GUN</span> 雷射</p>
+          <p><span class="legend-chip expand">WIDE</span> 板子變長</p>
+          <p><span class="legend-chip bigball">BIG</span> 球變大</p>
+          <p><span class="legend-chip multiball">x2</span> 分裂球</p>
+          <p><span class="legend-chip slow">SLOW</span> 球速變慢</p>
+          <p><span class="legend-chip bomb">!</span> 爆破磚</p>
+          <p><span class="legend-chip steel">S</span> 鋼鐵磚</p>
+          <p><span class="legend-chip moving">↔</span> 移動磚</p>
+        </div>
+      </article>
+
+      <article class="info-panel">
+        <h2>戰績</h2>
+        <div class="compact-stats" id="runStats"></div>
+      </article>
+
+      <article class="info-panel">
+        <h2>成就</h2>
+        <div class="achievement-list" id="achievementList"></div>
+      </article>
+    </section>
+
     <footer class="controls">
       <button id="startBtn" type="button">開始遊戲</button>
       <p>
@@ -52,7 +110,7 @@
         <span class="sep">|</span>
         發射 / 暫停：<kbd>Space</kbd>
         <span class="sep">|</span>
-        手機：拖曳畫布或使用下方按鍵，拿到 GUN 後可用 <kbd>J</kbd> / 點擊 / 觸控開火
+        手機：拖曳畫布或使用下方按鍵
       </p>
     </footer>
   </main>
