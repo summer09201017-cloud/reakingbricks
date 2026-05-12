@@ -62,8 +62,9 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 const CHANGELOG = [
+  "新增 LIFE 生命寶物，吃到可增加生命",
   "新增自動雷射、x3/x4 分裂球、道具持續時間條與每日挑戰分享",
   "新增快樂頌等背景音樂曲目切換",
   "新增分裂磚、加速磚、反彈磚與 Boss 大型磚",
@@ -88,6 +89,7 @@ const TOUCH_DRAG_SENSITIVITY = 1.18;
 const BASE_MUSIC_GAIN = 0.21;
 const BASE_SFX_GAIN = 0.75;
 const MAX_BALLS = 10;
+const MAX_LIVES = 6;
 const POWERUP_LIMIT_PER_TYPE = 2;
 const GUN_DURATION = 14;
 const BIG_BALL_DURATION = 16;
@@ -172,6 +174,7 @@ const POWERUP_TYPES = [
   { type: "multiball3", label: "x3", color: "#ffd166" },
   { type: "multiball4", label: "x4", color: "#f6bd60" },
   { type: "slow", label: "SLOW", color: "#8ed8ff" },
+  { type: "life", label: "LIFE", color: "#7ae582" },
 ];
 
 const ACHIEVEMENTS = [
@@ -1755,6 +1758,15 @@ function applyPowerup(powerup) {
     state.gunTimer = Math.max(state.gunTimer, GUN_DURATION);
     state.shotCooldown = 0;
     spawnFloatingText("雷射啟動", powerup.x, paddle.y - 12, "#ff9ce0");
+  } else if (powerup.type === "life") {
+    if (state.lives < MAX_LIVES) {
+      state.lives += 1;
+      spawnFloatingText("生命 +1", powerup.x, paddle.y - 12, "#7ae582");
+      vibrate([35, 40, 35]);
+    } else {
+      addScore(80);
+      spawnFloatingText("生命已滿 +80", powerup.x, paddle.y - 12, "#7ae582");
+    }
   }
 
   evaluateAchievements();

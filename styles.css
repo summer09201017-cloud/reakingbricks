@@ -343,6 +343,10 @@ button:active {
   background: #8ed8ff;
 }
 
+.life {
+  background: #7ae582;
+}
+
 .bomb {
   background: #ff9f9f;
 }
