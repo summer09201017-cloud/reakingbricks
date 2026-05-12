@@ -27,9 +27,17 @@ const themeSelect = document.getElementById("themeSelect");
 const musicToggle = document.getElementById("musicToggle");
 const sfxToggle = document.getElementById("sfxToggle");
 const hapticsToggle = document.getElementById("hapticsToggle");
+const musicVolume = document.getElementById("musicVolume");
+const sfxVolume = document.getElementById("sfxVolume");
+const musicVolumeValue = document.getElementById("musicVolumeValue");
+const sfxVolumeValue = document.getElementById("sfxVolumeValue");
 const setupMusicToggle = document.getElementById("setupMusicToggle");
 const setupSfxToggle = document.getElementById("setupSfxToggle");
 const setupHapticsToggle = document.getElementById("setupHapticsToggle");
+const setupMusicVolume = document.getElementById("setupMusicVolume");
+const setupSfxVolume = document.getElementById("setupSfxVolume");
+const setupMusicVolumeValue = document.getElementById("setupMusicVolumeValue");
+const setupSfxVolumeValue = document.getElementById("setupSfxVolumeValue");
 const setupBestScoreEl = document.getElementById("setupBestScore");
 const setupBestLevelEl = document.getElementById("setupBestLevel");
 const setupGamesPlayedEl = document.getElementById("setupGamesPlayed");
@@ -50,8 +58,10 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.3.1";
+const APP_VERSION = "1.3.2";
 const CHANGELOG = [
+  "新增音樂與音效音量滑桿，並讓聲音預設再放大 50%",
+  "修正遊戲頁音效按鈕，現在會直接打開聲音設定面板",
   "修正 PC 遊戲畫面置中與寬螢幕裁切問題",
   "提升音樂與碰撞音效音量，並改善音訊解鎖流程",
   "加厚底板並加入手機相對拖曳、PC 點畫布與 Enter 開始",
@@ -68,6 +78,8 @@ const BASE_CANVAS_HEIGHT = 560;
 const PADDLE_HEIGHT = 22;
 const PADDLE_BOTTOM_GAP = 28;
 const TOUCH_DRAG_SENSITIVITY = 1.18;
+const BASE_MUSIC_GAIN = 0.21;
+const BASE_SFX_GAIN = 0.75;
 const MAX_BALLS = 6;
 const POWERUP_LIMIT_PER_TYPE = 2;
 const STORAGE_KEYS = {
@@ -171,6 +183,8 @@ const defaultPreferences = {
   music: true,
   sfx: true,
   haptics: true,
+  musicVolume: 100,
+  sfxVolume: 100,
   difficulty: "normal",
   mode: "classic",
   theme: "classic",
@@ -436,8 +450,39 @@ function vibrate(pattern) {
   }
 }
 
+function normalizeVolume(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return 100;
+  }
+  return clamp(Math.round(number), 0, 150);
+}
+
+function getMusicGainValue() {
+  return BASE_MUSIC_GAIN * (normalizeVolume(preferences.musicVolume) / 100);
+}
+
+function getSfxGainValue() {
+  return BASE_SFX_GAIN * (normalizeVolume(preferences.sfxVolume) / 100);
+}
+
+function applyAudioLevels() {
+  if (!audioCtx) {
+    return;
+  }
+
+  const now = audioCtx.currentTime;
+  if (musicGain) {
+    musicGain.gain.setTargetAtTime(getMusicGainValue(), now, 0.03);
+  }
+  if (sfxGain) {
+    sfxGain.gain.setTargetAtTime(getSfxGainValue(), now, 0.02);
+  }
+}
+
 function ensureAudioReady() {
   if (audioCtx) {
+    applyAudioLevels();
     return audioCtx;
   }
 
@@ -449,11 +494,11 @@ function ensureAudioReady() {
   audioCtx = new AudioContextClass();
 
   musicGain = audioCtx.createGain();
-  musicGain.gain.value = 0.14;
+  musicGain.gain.value = getMusicGainValue();
   musicGain.connect(audioCtx.destination);
 
   sfxGain = audioCtx.createGain();
-  sfxGain.gain.value = 0.5;
+  sfxGain.gain.value = getSfxGainValue();
   sfxGain.connect(audioCtx.destination);
 
   nextMusicTime = audioCtx.currentTime + 0.05;
@@ -899,16 +944,27 @@ function syncButton() {
 }
 
 function syncSettingsControls() {
+  preferences.musicVolume = normalizeVolume(preferences.musicVolume);
+  preferences.sfxVolume = normalizeVolume(preferences.sfxVolume);
   musicToggle.checked = preferences.music;
   sfxToggle.checked = preferences.sfx;
   hapticsToggle.checked = preferences.haptics;
   setupMusicToggle.checked = preferences.music;
   setupSfxToggle.checked = preferences.sfx;
   setupHapticsToggle.checked = preferences.haptics;
+  musicVolume.value = String(preferences.musicVolume);
+  sfxVolume.value = String(preferences.sfxVolume);
+  setupMusicVolume.value = String(preferences.musicVolume);
+  setupSfxVolume.value = String(preferences.sfxVolume);
+  musicVolumeValue.textContent = `${preferences.musicVolume}%`;
+  sfxVolumeValue.textContent = `${preferences.sfxVolume}%`;
+  setupMusicVolumeValue.textContent = `${preferences.musicVolume}%`;
+  setupSfxVolumeValue.textContent = `${preferences.sfxVolume}%`;
   difficultySelect.value = state.difficulty;
   modeSelect.value = state.mode;
   themeSelect.value = state.theme;
   applyTheme();
+  applyAudioLevels();
 }
 
 let restartCountdownTimerId = null;
@@ -2056,16 +2112,18 @@ function togglePlayState() {
 }
 
 function openSettingsMenu() {
+  unlockAudioFromGesture();
   if (state.running) {
-    pauseGame(true);
-    return;
+    state.running = false;
+    stopMusic();
   }
 
-  setOverlay("設定", "調整音樂、音效與震動，設定會自動保存。", {
+  setOverlay("聲音設定", "調整音樂、音效、音量與震動，設定會自動保存。", {
     showActions: true,
     showSettings: true,
-    stats: getOverlayStatItems(),
+    stats: null,
   });
+  syncButton();
 }
 
 function openVersionPanel() {
@@ -2117,6 +2175,12 @@ function updatePreference(key, value) {
   if (key === "music" && value && state.running) {
     startMusic();
   }
+}
+
+function updateVolumePreference(key, value) {
+  preferences[key] = normalizeVolume(value);
+  savePreferences();
+  syncSettingsControls();
 }
 
 function restartForModeChange() {
@@ -2264,6 +2328,10 @@ hapticsToggle.addEventListener("change", () => updatePreference("haptics", hapti
 setupMusicToggle.addEventListener("change", () => updatePreference("music", setupMusicToggle.checked));
 setupSfxToggle.addEventListener("change", () => updatePreference("sfx", setupSfxToggle.checked));
 setupHapticsToggle.addEventListener("change", () => updatePreference("haptics", setupHapticsToggle.checked));
+musicVolume.addEventListener("input", () => updateVolumePreference("musicVolume", musicVolume.value));
+sfxVolume.addEventListener("input", () => updateVolumePreference("sfxVolume", sfxVolume.value));
+setupMusicVolume.addEventListener("input", () => updateVolumePreference("musicVolume", setupMusicVolume.value));
+setupSfxVolume.addEventListener("input", () => updateVolumePreference("sfxVolume", setupSfxVolume.value));
 
 difficultySelect.addEventListener("change", () => {
   state.difficulty = difficultySelect.value;

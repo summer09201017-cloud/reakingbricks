@@ -191,6 +191,33 @@ p {
   gap: 10px;
 }
 
+.volume-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.volume-settings label,
+.volume-control {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.volume-settings span,
+.volume-control span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.volume-settings input,
+.volume-control input {
+  width: 100%;
+  accent-color: var(--sun);
+}
+
 .setup-toggles {
   display: flex;
   flex-wrap: wrap;
@@ -527,6 +554,17 @@ canvas {
   padding: 10px;
 }
 
+.settings-menu {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+}
+
+.settings-menu .volume-control {
+  grid-column: 1 / -1;
+  min-width: min(360px, 76vw);
+  color: #ffffff;
+}
+
 .version-panel {
   display: grid;
   justify-items: start;
@@ -586,6 +624,10 @@ kbd {
   }
 
   .quick-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .volume-settings {
     grid-template-columns: 1fr;
   }
 

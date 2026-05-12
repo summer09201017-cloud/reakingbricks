@@ -66,6 +66,17 @@
           <label><input id="setupHapticsToggle" type="checkbox"> 震動</label>
         </div>
 
+        <div class="volume-settings" aria-label="音量設定">
+          <label>
+            <span>音樂音量 <strong id="setupMusicVolumeValue">100%</strong></span>
+            <input id="setupMusicVolume" type="range" min="0" max="150" step="5" value="100">
+          </label>
+          <label>
+            <span>音效音量 <strong id="setupSfxVolumeValue">100%</strong></span>
+            <input id="setupSfxVolume" type="range" min="0" max="150" step="5" value="100">
+          </label>
+        </div>
+
         <div class="setup-actions">
           <button id="startBtn" type="button" class="primary-btn">開始遊玩</button>
           <button id="versionBtn" type="button" class="secondary-btn">版本資訊</button>
@@ -145,6 +156,14 @@
             <label><input id="musicToggle" type="checkbox"> 音樂</label>
             <label><input id="sfxToggle" type="checkbox"> 音效</label>
             <label><input id="hapticsToggle" type="checkbox"> 震動</label>
+            <label class="volume-control">
+              <span>音樂音量 <strong id="musicVolumeValue">100%</strong></span>
+              <input id="musicVolume" type="range" min="0" max="150" step="5" value="100">
+            </label>
+            <label class="volume-control">
+              <span>音效音量 <strong id="sfxVolumeValue">100%</strong></span>
+              <input id="sfxVolume" type="range" min="0" max="150" step="5" value="100">
+            </label>
           </div>
           <div class="version-panel" id="versionPanel" hidden></div>
         </div>
