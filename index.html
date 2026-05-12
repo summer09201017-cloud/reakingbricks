@@ -58,6 +58,15 @@
               <option value="stone">石磚</option>
             </select>
           </label>
+          <label>
+            背景音樂
+            <select id="songSelect">
+              <option value="arcade">街機跳躍</option>
+              <option value="joy">快樂頌</option>
+              <option value="canon">卡農律動</option>
+              <option value="chill">放鬆節拍</option>
+            </select>
+          </label>
         </div>
 
         <div class="setup-toggles" aria-label="聲音與震動">
@@ -79,6 +88,7 @@
 
         <div class="setup-actions">
           <button id="startBtn" type="button" class="primary-btn">開始遊玩</button>
+          <button id="shareDailyBtn" type="button" class="secondary-btn">分享每日挑戰</button>
           <button id="versionBtn" type="button" class="secondary-btn">版本資訊</button>
           <button id="updateBtn" type="button" class="secondary-btn" hidden>更新遊戲</button>
           <button id="installBtn" type="button" class="secondary-btn" hidden>安裝 APP</button>
@@ -94,10 +104,16 @@
             <p><span class="legend-chip expand">WIDE</span> 板子變長</p>
             <p><span class="legend-chip bigball">BIG</span> 球變大</p>
             <p><span class="legend-chip multiball">x2</span> 分裂球</p>
+            <p><span class="legend-chip multiball3">x3</span> 三重球</p>
+            <p><span class="legend-chip multiball4">x4</span> 四重球</p>
             <p><span class="legend-chip slow">SLOW</span> 球速變慢</p>
             <p><span class="legend-chip bomb">!</span> 爆破磚</p>
             <p><span class="legend-chip steel">S</span> 鋼鐵磚</p>
             <p><span class="legend-chip moving">↔</span> 移動磚</p>
+            <p><span class="legend-chip split">÷</span> 分裂磚</p>
+            <p><span class="legend-chip speed">FAST</span> 加速磚</p>
+            <p><span class="legend-chip bounce">↕</span> 反彈磚</p>
+            <p><span class="legend-chip boss">BOSS</span> 大型磚</p>
           </div>
         </article>
 
@@ -137,6 +153,7 @@
 
       <section class="canvas-wrap">
         <canvas id="gameCanvas" width="900" height="560" aria-label="打磚塊遊戲畫面"></canvas>
+        <div id="effectHud" class="effect-hud" aria-label="道具狀態"></div>
         <div class="progress-wrap" aria-label="關卡進度">
           <div class="progress-track"><div id="levelProgress" class="progress-fill"></div></div>
           <span id="remainingBricks">剩餘 0</span>
@@ -156,6 +173,15 @@
             <label><input id="musicToggle" type="checkbox"> 音樂</label>
             <label><input id="sfxToggle" type="checkbox"> 音效</label>
             <label><input id="hapticsToggle" type="checkbox"> 震動</label>
+            <label class="settings-select">
+              背景音樂
+              <select id="songSelectInGame">
+                <option value="arcade">街機跳躍</option>
+                <option value="joy">快樂頌</option>
+                <option value="canon">卡農律動</option>
+                <option value="chill">放鬆節拍</option>
+              </select>
+            </label>
             <label class="volume-control">
               <span>音樂音量 <strong id="musicVolumeValue">100%</strong></span>
               <input id="musicVolume" type="range" min="0" max="150" step="5" value="100">

@@ -173,7 +173,7 @@ p {
 
 .quick-settings {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 10px;
 }
 
@@ -331,6 +331,14 @@ button:active {
   background: #ffe680;
 }
 
+.multiball3 {
+  background: #ffd166;
+}
+
+.multiball4 {
+  background: #f6bd60;
+}
+
 .slow {
   background: #8ed8ff;
 }
@@ -345,6 +353,22 @@ button:active {
 
 .moving {
   background: #c9bdff;
+}
+
+.split {
+  background: #c2f970;
+}
+
+.speed {
+  background: #ffb86b;
+}
+
+.bounce {
+  background: #7dd3fc;
+}
+
+.boss {
+  background: #f87171;
 }
 
 .achievement {
@@ -484,6 +508,55 @@ canvas {
   transition: width 220ms ease;
 }
 
+.effect-hud {
+  position: absolute;
+  left: 14px;
+  top: 36px;
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  width: min(260px, 42vw);
+  pointer-events: none;
+}
+
+.effect-chip {
+  display: grid;
+  grid-template-columns: auto minmax(64px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 1px solid #ffffff38;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #061827bb;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-shadow: 0 1px 2px #00101f;
+}
+
+.effect-chip i {
+  width: 28px;
+  border-radius: 6px;
+  padding: 2px 4px;
+  color: #06213b;
+  font-style: normal;
+  text-align: center;
+  text-shadow: none;
+}
+
+.effect-bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 999px;
+  background: #ffffff2e;
+  overflow: hidden;
+}
+
+.effect-fill {
+  height: 100%;
+  border-radius: inherit;
+}
+
 .overlay,
 .rotate-prompt {
   position: absolute;
@@ -563,6 +636,17 @@ canvas {
   grid-column: 1 / -1;
   min-width: min(360px, 76vw);
   color: #ffffff;
+}
+
+.settings-menu .settings-select {
+  grid-column: 1 / -1;
+  display: grid;
+  min-width: min(360px, 76vw);
+  color: #ffffff;
+}
+
+.settings-menu .settings-select select {
+  min-height: 36px;
 }
 
 .version-panel {
@@ -681,6 +765,17 @@ kbd {
     left: 10px;
     right: 10px;
     font-size: 0.84rem;
+  }
+
+  .effect-hud {
+    top: 30px;
+    left: 10px;
+    width: min(220px, 40vw);
+  }
+
+  .effect-chip {
+    padding: 4px 6px;
+    font-size: 0.72rem;
   }
 
   .overlay-stats {

@@ -24,6 +24,8 @@ const versionBtn = document.getElementById("versionBtn");
 const difficultySelect = document.getElementById("difficultySelect");
 const modeSelect = document.getElementById("modeSelect");
 const themeSelect = document.getElementById("themeSelect");
+const songSelect = document.getElementById("songSelect");
+const songSelectInGame = document.getElementById("songSelectInGame");
 const musicToggle = document.getElementById("musicToggle");
 const sfxToggle = document.getElementById("sfxToggle");
 const hapticsToggle = document.getElementById("hapticsToggle");
@@ -41,10 +43,12 @@ const setupSfxVolumeValue = document.getElementById("setupSfxVolumeValue");
 const setupBestScoreEl = document.getElementById("setupBestScore");
 const setupBestLevelEl = document.getElementById("setupBestLevel");
 const setupGamesPlayedEl = document.getElementById("setupGamesPlayed");
+const shareDailyBtn = document.getElementById("shareDailyBtn");
 const runStatsEl = document.getElementById("runStats");
 const achievementList = document.getElementById("achievementList");
 const levelProgressEl = document.getElementById("levelProgress");
 const remainingBricksEl = document.getElementById("remainingBricks");
+const effectHud = document.getElementById("effectHud");
 const overlay = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlayTitle");
 const overlayText = document.getElementById("overlayText");
@@ -58,8 +62,11 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.3.2";
+const APP_VERSION = "1.4.0";
 const CHANGELOG = [
+  "新增自動雷射、x3/x4 分裂球、道具持續時間條與每日挑戰分享",
+  "新增快樂頌等背景音樂曲目切換",
+  "新增分裂磚、加速磚、反彈磚與 Boss 大型磚",
   "新增音樂與音效音量滑桿，並讓聲音預設再放大 50%",
   "修正遊戲頁音效按鈕，現在會直接打開聲音設定面板",
   "修正 PC 遊戲畫面置中與寬螢幕裁切問題",
@@ -80,8 +87,12 @@ const PADDLE_BOTTOM_GAP = 28;
 const TOUCH_DRAG_SENSITIVITY = 1.18;
 const BASE_MUSIC_GAIN = 0.21;
 const BASE_SFX_GAIN = 0.75;
-const MAX_BALLS = 6;
+const MAX_BALLS = 10;
 const POWERUP_LIMIT_PER_TYPE = 2;
+const GUN_DURATION = 14;
+const BIG_BALL_DURATION = 16;
+const AUTO_FIRE_INTERVAL = 0.32;
+const BOSS_INTERVAL = 4;
 const STORAGE_KEYS = {
   preferences: "breakout.preferences.v2",
   records: "breakout.records.v2",
@@ -158,6 +169,8 @@ const POWERUP_TYPES = [
   { type: "expand", label: "WIDE", color: "#98f5b4" },
   { type: "bigball", label: "BIG", color: "#ffcf70" },
   { type: "multiball", label: "x2", color: "#ffe680" },
+  { type: "multiball3", label: "x3", color: "#ffd166" },
+  { type: "multiball4", label: "x4", color: "#f6bd60" },
   { type: "slow", label: "SLOW", color: "#8ed8ff" },
 ];
 
@@ -185,6 +198,7 @@ const defaultPreferences = {
   haptics: true,
   musicVolume: 100,
   sfxVolume: 100,
+  song: "arcade",
   difficulty: "normal",
   mode: "classic",
   theme: "classic",
@@ -264,8 +278,28 @@ let pendingStartAfterLandscape = false;
 let pendingNewGameAfterLandscape = false;
 let levelCountdownTimerId = null;
 
-const MUSIC_STEP = 0.22;
-const MUSIC_PATTERN = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46];
+const SONGS = {
+  arcade: {
+    label: "街機跳躍",
+    step: 0.22,
+    pattern: [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46],
+  },
+  joy: {
+    label: "快樂頌",
+    step: 0.28,
+    pattern: [329.63, 329.63, 349.23, 392, 392, 349.23, 329.63, 293.66, 261.63, 261.63, 293.66, 329.63, 329.63, 293.66, 293.66],
+  },
+  canon: {
+    label: "卡農律動",
+    step: 0.24,
+    pattern: [392, 493.88, 587.33, 739.99, 659.25, 587.33, 659.25, 493.88],
+  },
+  chill: {
+    label: "放鬆節拍",
+    step: 0.32,
+    pattern: [261.63, 329.63, 392, 523.25, 392, 329.63, 293.66, 349.23],
+  },
+};
 
 function loadStoredObject(key, fallback) {
   try {
@@ -375,6 +409,10 @@ function getDifficultyConfig() {
 
 function getThemeConfig() {
   return THEMES[state.theme] || THEMES.classic;
+}
+
+function getSongConfig() {
+  return SONGS[preferences.song] || SONGS.arcade;
 }
 
 function applyTheme() {
@@ -541,8 +579,9 @@ function startMusic() {
     }
 
     const lookAhead = 0.7;
+    const song = getSongConfig();
     while (nextMusicTime < audioCtx.currentTime + lookAhead) {
-      const frequency = MUSIC_PATTERN[musicStepIndex % MUSIC_PATTERN.length];
+      const frequency = song.pattern[musicStepIndex % song.pattern.length];
       const oscillator = audioCtx.createOscillator();
       const envelope = audioCtx.createGain();
       oscillator.type = "triangle";
@@ -550,15 +589,15 @@ function startMusic() {
 
       envelope.gain.setValueAtTime(0.0001, nextMusicTime);
       envelope.gain.linearRampToValueAtTime(0.12, nextMusicTime + 0.018);
-      envelope.gain.exponentialRampToValueAtTime(0.0001, nextMusicTime + MUSIC_STEP * 0.95);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, nextMusicTime + song.step * 0.95);
 
       oscillator.connect(envelope);
       envelope.connect(musicGain);
 
       oscillator.start(nextMusicTime);
-      oscillator.stop(nextMusicTime + MUSIC_STEP);
+      oscillator.stop(nextMusicTime + song.step);
 
-      nextMusicTime += MUSIC_STEP;
+      nextMusicTime += song.step;
       musicStepIndex += 1;
     }
   };
@@ -640,6 +679,53 @@ function updateHud() {
   updateLevelProgress();
   renderRunStats();
   renderModeLabel();
+  renderEffectHud();
+}
+
+function getPowerupMeta(type) {
+  return POWERUP_TYPES.find((item) => item.type === type) || { label: type, color: "#ffffff" };
+}
+
+function renderEffectHud() {
+  const effects = [];
+  if (state.gunTimer > 0) {
+    const meta = getPowerupMeta("laser");
+    effects.push({
+      label: meta.label,
+      name: "自動雷射",
+      color: meta.color,
+      ratio: state.gunTimer / GUN_DURATION,
+      time: state.gunTimer,
+    });
+  }
+  if (state.bigBallTimer > 0) {
+    const meta = getPowerupMeta("bigball");
+    effects.push({
+      label: meta.label,
+      name: "巨球",
+      color: meta.color,
+      ratio: state.bigBallTimer / BIG_BALL_DURATION,
+      time: state.bigBallTimer,
+    });
+  }
+  if (state.comboTimer > 0 && state.combo >= 3) {
+    effects.push({
+      label: `x${state.combo}`,
+      name: "Combo",
+      color: "#ffe680",
+      ratio: state.comboTimer / 2.6,
+      time: state.comboTimer,
+    });
+  }
+
+  effectHud.innerHTML = effects.map((effect) => `
+    <div class="effect-chip">
+      <i style="background:${effect.color}">${effect.label}</i>
+      <span>${effect.name}</span>
+      <b>${effect.time.toFixed(1)}s</b>
+      <div class="effect-bar"><div class="effect-fill" style="width:${Math.round(clamp(effect.ratio, 0, 1) * 100)}%; background:${effect.color}"></div></div>
+    </div>
+  `).join("");
 }
 
 function renderModeLabel() {
@@ -963,6 +1049,8 @@ function syncSettingsControls() {
   difficultySelect.value = state.difficulty;
   modeSelect.value = state.mode;
   themeSelect.value = state.theme;
+  songSelect.value = preferences.song in SONGS ? preferences.song : "arcade";
+  songSelectInGame.value = preferences.song in SONGS ? preferences.song : "arcade";
   applyTheme();
   applyAudioLevels();
 }
@@ -1095,22 +1183,36 @@ function drawRoundedRect(x, y, w, h, r) {
 
 function pickSpecialBrick(level) {
   const config = getDifficultyConfig();
-  const chance = Math.min(0.3, config.specialRate + (level - 1) * 0.015);
+  const chance = Math.min(0.42, config.specialRate + (level - 1) * 0.018);
   if (level < 2 || random() > chance) {
     return null;
   }
 
   const roll = random();
-  if (roll < 0.36) {
+  if (roll < 0.2) {
     return "bomb";
   }
-  if (roll < 0.68) {
+  if (roll < 0.38) {
     return "steel";
   }
-  return "moving";
+  if (roll < 0.56) {
+    return "moving";
+  }
+  if (roll < 0.72) {
+    return "split";
+  }
+  if (roll < 0.86) {
+    return "speed";
+  }
+  return "bounce";
 }
 
 function createBricks(level) {
+  if (level > 1 && level % BOSS_INTERVAL === 0) {
+    createBossBricks(level);
+    return;
+  }
+
   const rows = 6;
   const cols = 10;
   const top = 70;
@@ -1144,6 +1246,61 @@ function createBricks(level) {
         special,
         movePhase: random() * Math.PI * 2,
         moveRange: special === "moving" ? 14 + random() * 12 : 0,
+      });
+    }
+  }
+}
+
+function createBossBricks(level) {
+  const palette = getThemeConfig().palette;
+  const bossWidth = Math.min(canvas.width - 120, 430 + level * 18);
+  const bossHeight = 54;
+  const bossX = (canvas.width - bossWidth) * 0.5;
+  const top = 78;
+  const guardCols = 8;
+  const gap = 8;
+  const guardWidth = (canvas.width - 72 * 2 - gap * (guardCols - 1)) / guardCols;
+  const guardHeight = 22;
+  const bossHp = 10 + level * 2 + getDifficultyConfig().hpBonus * 3;
+
+  bricks = [{
+    x: bossX,
+    baseX: bossX,
+    y: top,
+    row: 0,
+    col: 0,
+    width: bossWidth,
+    height: bossHeight,
+    hp: bossHp,
+    maxHp: bossHp,
+    color: "#f87171",
+    alive: true,
+    special: "boss",
+    movePhase: random() * Math.PI * 2,
+    moveRange: 30,
+  }];
+
+  for (let row = 0; row < 2; row += 1) {
+    for (let col = 0; col < guardCols; col += 1) {
+      const special = ["split", "speed", "bounce", "steel"][Math.floor(random() * 4)];
+      const baseX = 72 + col * (guardWidth + gap);
+      const baseY = top + bossHeight + 28 + row * (guardHeight + gap);
+      const hp = Math.min(4, 1 + Math.floor(level / 3) + getDifficultyConfig().hpBonus);
+      bricks.push({
+        x: baseX,
+        baseX,
+        y: baseY,
+        row: row + 1,
+        col,
+        width: guardWidth,
+        height: guardHeight,
+        hp,
+        maxHp: hp,
+        color: palette[(row + col) % palette.length],
+        alive: true,
+        special,
+        movePhase: random() * Math.PI * 2,
+        moveRange: 0,
       });
     }
   }
@@ -1406,11 +1563,11 @@ function updatePaddle(step) {
 function updateBricks(step) {
   for (let i = 0; i < bricks.length; i += 1) {
     const brick = bricks[i];
-    if (!brick.alive || brick.special !== "moving") {
+    if (!brick.alive || (brick.special !== "moving" && brick.special !== "boss")) {
       continue;
     }
 
-    brick.movePhase += 0.018 * step * (1 + state.level * 0.04);
+    brick.movePhase += (brick.special === "boss" ? 0.01 : 0.018) * step * (1 + state.level * 0.04);
     brick.x = clamp(
       brick.baseX + Math.sin(brick.movePhase) * brick.moveRange,
       8,
@@ -1468,7 +1625,52 @@ function slowBall(ball, factor, minSpeed) {
   ball.vy *= scale;
 }
 
-function createSplitBallsFrom(source) {
+function speedBall(ball, factor, maxSpeed = 11.2) {
+  const speed = Math.hypot(ball.vx, ball.vy);
+  if (speed < 0.001) {
+    return;
+  }
+
+  const target = Math.min(maxSpeed, speed * factor);
+  const scale = target / speed;
+  ball.vx *= scale;
+  ball.vy *= scale;
+}
+
+function speedActiveBalls(factor = 1.16) {
+  for (let i = 0; i < balls.length; i += 1) {
+    if (!balls[i].stuck) {
+      speedBall(balls[i], factor);
+    }
+  }
+}
+
+function spawnSplitBallsFromBrick(brick, count = 2) {
+  if (balls.length >= MAX_BALLS) {
+    return 0;
+  }
+
+  const speed = Math.max(4.2, getDifficultyConfig().ballSpeed + state.level * 0.12);
+  let created = 0;
+  const spread = 1.1;
+  for (let i = 0; i < count; i += 1) {
+    if (balls.length >= MAX_BALLS) {
+      break;
+    }
+    const angle = -Math.PI * 0.5 - spread * 0.5 + (spread * (i + 0.5)) / count;
+    balls.push(createBall(
+      brick.x + brick.width * 0.5,
+      brick.y + brick.height + BALL_RADIUS + 1,
+      false,
+      Math.cos(angle) * speed,
+      Math.sin(angle) * speed,
+    ));
+    created += 1;
+  }
+  return created;
+}
+
+function createSplitBallsFrom(source, requestedCount = 2) {
   if (balls.length >= MAX_BALLS) {
     return 0;
   }
@@ -1482,7 +1684,13 @@ function createSplitBallsFrom(source) {
     baseVy = -Math.sqrt(speed * speed - baseVx * baseVx);
   }
 
-  const angles = [-0.52, 0.52];
+  const spread = Math.min(1.25, 0.36 * Math.max(2, requestedCount));
+  const angles = Array.from({ length: requestedCount }, (_, index) => {
+    if (requestedCount === 1) {
+      return 0.45;
+    }
+    return -spread * 0.5 + (spread * index) / (requestedCount - 1);
+  });
   let created = 0;
 
   for (let i = 0; i < angles.length; i += 1) {
@@ -1518,7 +1726,7 @@ function applyPowerup(powerup) {
     paddle.x = clamp(paddle.x, 0, canvas.width - paddle.width);
     spawnFloatingText("板子變長", powerup.x, paddle.y - 12, "#98f5b4");
   } else if (powerup.type === "bigball") {
-    state.bigBallTimer = Math.max(state.bigBallTimer, 16);
+    state.bigBallTimer = Math.max(state.bigBallTimer, BIG_BALL_DURATION);
     setBallRadius(BIG_BALL_RADIUS);
     spawnFloatingText("巨球啟動", powerup.x, paddle.y - 12, "#ffcf70");
   } else if (powerup.type === "slow") {
@@ -1528,14 +1736,15 @@ function applyPowerup(powerup) {
       }
     }
     spawnFloatingText("球速變慢", powerup.x, paddle.y - 12, "#8ed8ff");
-  } else if (powerup.type === "multiball") {
+  } else if (powerup.type === "multiball" || powerup.type === "multiball3" || powerup.type === "multiball4") {
     const source = balls.find((item) => !item.stuck) || balls[0];
     if (source) {
       if (source.stuck) {
         launchBall(source);
       }
 
-      const created = createSplitBallsFrom(source);
+      const splitCount = powerup.type === "multiball4" ? 4 : powerup.type === "multiball3" ? 3 : 2;
+      const created = createSplitBallsFrom(source, splitCount);
       if (created > 0) {
         spawnFloatingText(`多 ${created} 顆球`, powerup.x, paddle.y - 12, "#ffe680");
       } else {
@@ -1543,7 +1752,7 @@ function applyPowerup(powerup) {
       }
     }
   } else if (powerup.type === "laser") {
-    state.gunTimer = Math.max(state.gunTimer, 14);
+    state.gunTimer = Math.max(state.gunTimer, GUN_DURATION);
     state.shotCooldown = 0;
     spawnFloatingText("雷射啟動", powerup.x, paddle.y - 12, "#ff9ce0");
   }
@@ -1639,6 +1848,21 @@ function destroyBrick(brick, options = {}) {
   if (brick.special === "bomb" && !options.fromExplosion) {
     explodeBrick(brick);
   }
+  if (brick.special === "split" && !options.fromExplosion) {
+    const created = spawnSplitBallsFromBrick(brick, 2);
+    if (created > 0) {
+      spawnFloatingText(`分裂 +${created}`, brick.x + brick.width * 0.5, brick.y, "#c2f970");
+    }
+  }
+  if (brick.special === "speed" && !options.fromExplosion) {
+    speedActiveBalls(1.18);
+    spawnFloatingText("加速", brick.x + brick.width * 0.5, brick.y, "#ffb86b");
+  }
+  if (brick.special === "boss") {
+    addScore(150);
+    spawnFloatingText("BOSS CLEAR +150", brick.x + brick.width * 0.5, brick.y, "#ffe680");
+    vibrate([45, 40, 45]);
+  }
 }
 
 function registerCombo(options = {}) {
@@ -1730,6 +1954,18 @@ function handleBrickCollision(ball) {
     }
 
     damageBrick(brick);
+    if (brick.special === "bounce") {
+      const rotated = rotateVector(ball.vx, ball.vy, random() < 0.5 ? -0.55 : 0.55);
+      ball.vx = rotated.vx;
+      ball.vy = rotated.vy;
+      spawnFloatingText("反彈", brick.x + brick.width * 0.5, brick.y, "#7dd3fc");
+    }
+    if (brick.special === "speed") {
+      speedBall(ball, 1.12);
+    }
+    if (brick.special === "boss") {
+      speedBall(ball, 1.03);
+    }
     checkLevelCleared();
 
     const speed = Math.hypot(ball.vx, ball.vy);
@@ -1753,7 +1989,7 @@ function fireBullets() {
   bullets.push({ x: paddle.x + 14, y, w: 4, h: 13, vy: -11.2 });
   bullets.push({ x: paddle.x + paddle.width - 14, y, w: 4, h: 13, vy: -11.2 });
   sessionStats.shotsFired += 2;
-  state.shotCooldown = 0.2;
+  state.shotCooldown = AUTO_FIRE_INTERVAL;
   updateHud();
 }
 
@@ -1834,6 +2070,10 @@ function updateTimers(deltaSec) {
     state.shotCooldown = Math.max(0, state.shotCooldown - deltaSec);
   }
 
+  if (state.running && state.gunTimer > 0 && state.shotCooldown === 0) {
+    fireBullets();
+  }
+
   if (state.comboTimer > 0) {
     state.comboTimer = Math.max(0, state.comboTimer - deltaSec);
     if (state.comboTimer === 0) {
@@ -1879,6 +2119,9 @@ function drawBackground() {
 }
 
 function getBrickColor(brick) {
+  if (brick.special === "boss") {
+    return "#f87171";
+  }
   if (brick.special === "steel") {
     return "#aab7c7";
   }
@@ -1887,6 +2130,15 @@ function getBrickColor(brick) {
   }
   if (brick.special === "moving") {
     return "#b39cff";
+  }
+  if (brick.special === "split") {
+    return "#c2f970";
+  }
+  if (brick.special === "speed") {
+    return "#ffb86b";
+  }
+  if (brick.special === "bounce") {
+    return "#7dd3fc";
   }
   if (brick.hp >= 3) {
     return "#f94144";
@@ -1898,6 +2150,9 @@ function getBrickColor(brick) {
 }
 
 function getBrickLabel(brick) {
+  if (brick.special === "boss") {
+    return `BOSS ${brick.hp}`;
+  }
   if (brick.special === "steel") {
     return "S";
   }
@@ -1906,6 +2161,15 @@ function getBrickLabel(brick) {
   }
   if (brick.special === "moving") {
     return "↔";
+  }
+  if (brick.special === "split") {
+    return "÷";
+  }
+  if (brick.special === "speed") {
+    return "F";
+  }
+  if (brick.special === "bounce") {
+    return "↕";
   }
   if (brick.hp > 1) {
     return String(brick.hp);
@@ -1941,7 +2205,7 @@ function drawBricks() {
     const label = getBrickLabel(brick);
     if (label) {
       ctx.fillStyle = "#0e1f33";
-      ctx.font = "bold 14px Trebuchet MS";
+      ctx.font = brick.special === "boss" ? "bold 20px Trebuchet MS" : "bold 14px Trebuchet MS";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(label, brick.x + brick.width * 0.5, brick.y + brick.height * 0.55);
@@ -2093,6 +2357,7 @@ function gameLoop(ts) {
   }
 
   updateFloatingTexts(step);
+  renderEffectHud();
   render();
   requestAnimationFrame(gameLoop);
 }
@@ -2144,6 +2409,39 @@ function openVersionPanel() {
   });
 }
 
+function getDailyShareText() {
+  const difficulty = getDifficultyConfig().label;
+  const score = state.mode === "daily" ? Math.max(state.score, records.bestDailyScore) : records.bestDailyScore;
+  const level = Math.max(records.bestLevel, sessionStats.highestLevel);
+  return [
+    `打磚塊每日挑戰 ${dailyKey}`,
+    `難度：${difficulty}`,
+    `分數：${score}`,
+    `最高關：${level}`,
+    `來挑戰：${window.location.href}`,
+  ].join("\n");
+}
+
+async function shareDailyChallenge() {
+  const text = getDailyShareText();
+  setInstallHint("每日挑戰結果已準備好，正在開啟分享或複製。");
+  try {
+    if (navigator.share && isTouchDevice()) {
+      await navigator.share({ title: "打磚塊每日挑戰", text });
+      setInstallHint("每日挑戰結果已送出。");
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      setInstallHint("每日挑戰結果已複製，可以貼到 LINE、Discord 或社群。");
+      return;
+    }
+  } catch {
+    // Sharing can be cancelled by the user; keep the game state unchanged.
+  }
+  setInstallHint(text.replace(/\n/g, " / "));
+}
+
 function bindHoldButton(button, onPress, onRelease) {
   if (!button) {
     return;
@@ -2180,6 +2478,17 @@ function updatePreference(key, value) {
 function updateVolumePreference(key, value) {
   preferences[key] = normalizeVolume(value);
   savePreferences();
+  syncSettingsControls();
+}
+
+function updateSongPreference(value) {
+  preferences.song = value in SONGS ? value : "arcade";
+  savePreferences();
+  stopMusic();
+  musicStepIndex = 0;
+  if (state.running) {
+    startMusic();
+  }
   syncSettingsControls();
 }
 
@@ -2314,6 +2623,7 @@ quickRestartBtn.addEventListener("click", () => {
 });
 settingsBtn.addEventListener("click", openSettingsMenu);
 versionBtn.addEventListener("click", openVersionPanel);
+shareDailyBtn.addEventListener("click", shareDailyChallenge);
 backToSetupBtn.addEventListener("click", showSetupScreen);
 backToSetupOverlayBtn.addEventListener("click", showSetupScreen);
 
@@ -2351,6 +2661,12 @@ themeSelect.addEventListener("change", () => {
   refreshBrickTheme();
   updateHud();
 });
+
+songSelect.addEventListener("change", () => {
+  updateSongPreference(songSelect.value);
+});
+
+songSelectInGame.addEventListener("change", () => updateSongPreference(songSelectInGame.value));
 
 bindHoldButton(leftBtn, () => {
   keys.left = true;
