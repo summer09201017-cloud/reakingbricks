@@ -1,6 +1,10 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
+const appRoot = document.getElementById("appRoot");
+const setupScreen = document.getElementById("setupScreen");
+const gameScreen = document.getElementById("gameScreen");
+const gameHud = document.querySelector(".game-hud");
 const scoreEl = document.getElementById("score");
 const bestScoreEl = document.getElementById("bestScore");
 const livesEl = document.getElementById("lives");
@@ -11,6 +15,8 @@ const toggleBtn = document.getElementById("toggleBtn");
 const leftBtn = document.getElementById("leftBtn");
 const rightBtn = document.getElementById("rightBtn");
 const fireBtn = document.getElementById("fireBtn");
+const backToSetupBtn = document.getElementById("backToSetupBtn");
+const backToSetupOverlayBtn = document.getElementById("backToSetupOverlayBtn");
 const installBtn = document.getElementById("installBtn");
 const updateBtn = document.getElementById("updateBtn");
 const settingsBtn = document.getElementById("settingsBtn");
@@ -21,6 +27,12 @@ const themeSelect = document.getElementById("themeSelect");
 const musicToggle = document.getElementById("musicToggle");
 const sfxToggle = document.getElementById("sfxToggle");
 const hapticsToggle = document.getElementById("hapticsToggle");
+const setupMusicToggle = document.getElementById("setupMusicToggle");
+const setupSfxToggle = document.getElementById("setupSfxToggle");
+const setupHapticsToggle = document.getElementById("setupHapticsToggle");
+const setupBestScoreEl = document.getElementById("setupBestScore");
+const setupBestLevelEl = document.getElementById("setupBestLevel");
+const setupGamesPlayedEl = document.getElementById("setupGamesPlayed");
 const runStatsEl = document.getElementById("runStats");
 const achievementList = document.getElementById("achievementList");
 const levelProgressEl = document.getElementById("levelProgress");
@@ -36,9 +48,12 @@ const resumeBtn = document.getElementById("resumeBtn");
 const restartBtn = document.getElementById("restartBtn");
 const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
+const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 const CHANGELOG = [
+  "新增設定頁、橫向全螢幕遊戲頁與手機旋轉提示",
+  "新增關卡開始倒數與精簡遊戲 HUD",
   "新增主題切換與立體磚塊視覺",
   "新增 Combo 連擊加分",
   "新增快速重開倒數",
@@ -46,6 +61,7 @@ const CHANGELOG = [
 ];
 const BALL_RADIUS = 8;
 const BIG_BALL_RADIUS = 13;
+const BASE_CANVAS_HEIGHT = 560;
 const MAX_BALLS = 6;
 const POWERUP_LIMIT_PER_TYPE = 2;
 const STORAGE_KEYS = {
@@ -216,6 +232,10 @@ let musicStepIndex = 0;
 let deferredInstallPrompt = null;
 let waitingServiceWorker = null;
 let refreshingForUpdate = false;
+let isGameScreenActive = false;
+let pendingStartAfterLandscape = false;
+let pendingNewGameAfterLandscape = false;
+let levelCountdownTimerId = null;
 
 const MUSIC_STEP = 0.22;
 const MUSIC_PATTERN = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46];
@@ -538,6 +558,9 @@ function updateHud() {
   bestScoreEl.textContent = String(records.bestScore);
   livesEl.textContent = String(state.lives);
   levelEl.textContent = String(state.level);
+  setupBestScoreEl.textContent = String(records.bestScore);
+  setupBestLevelEl.textContent = String(Math.max(records.bestLevel, sessionStats.highestLevel));
+  setupGamesPlayedEl.textContent = String(records.gamesPlayed);
   updateLevelProgress();
   renderRunStats();
   renderModeLabel();
@@ -654,6 +677,7 @@ function setOverlay(title, text, options = {}) {
 
   overlayTitle.textContent = title;
   overlayText.textContent = text;
+  overlay.classList.remove("countdown");
   overlay.classList.toggle("hidden", !visible);
   overlayActions.hidden = !showActions;
   settingsMenu.hidden = !showSettings;
@@ -688,6 +712,138 @@ function isTouchDevice() {
   return window.matchMedia("(hover: none), (pointer: coarse)").matches;
 }
 
+function isLandscapeViewport() {
+  return window.innerWidth >= window.innerHeight;
+}
+
+function resetStarField() {
+  for (let i = 0; i < stars.length; i += 1) {
+    stars[i].x = Math.random() * canvas.width;
+    stars[i].y = Math.random() * (canvas.height * 0.52);
+  }
+}
+
+function resizeCanvasForScreen() {
+  if (!isGameScreenActive) {
+    return;
+  }
+
+  const hudHeight = gameHud ? gameHud.getBoundingClientRect().height : 0;
+  const availableHeight = Math.max(320, window.innerHeight - hudHeight);
+  const aspect = clamp(window.innerWidth / availableHeight, 1.45, 2.55);
+  const nextWidth = Math.round(BASE_CANVAS_HEIGHT * aspect);
+
+  if (canvas.width === nextWidth && canvas.height === BASE_CANVAS_HEIGHT) {
+    return;
+  }
+
+  canvas.width = nextWidth;
+  canvas.height = BASE_CANVAS_HEIGHT;
+  paddle.y = canvas.height - 42;
+  resetStarField();
+}
+
+function shouldShowRotatePrompt() {
+  return isGameScreenActive && isTouchDevice() && !isLandscapeViewport();
+}
+
+function updateOrientationPrompt() {
+  const showPrompt = shouldShowRotatePrompt();
+  rotatePrompt.hidden = !showPrompt;
+
+  if (showPrompt) {
+    if (state.running || levelCountdownTimerId !== null) {
+      pendingStartAfterLandscape = true;
+    }
+    state.running = false;
+    stopMusic();
+    syncButton();
+  } else if (pendingNewGameAfterLandscape) {
+    pendingNewGameAfterLandscape = false;
+    resizeCanvasForScreen();
+    restartGame({ showStartOverlay: false });
+    beginLevelCountdown(`第 ${state.level} 關`);
+  } else if (pendingStartAfterLandscape) {
+    pendingStartAfterLandscape = false;
+    resizeCanvasForScreen();
+    beginLevelCountdown(`第 ${state.level} 關`);
+  }
+}
+
+async function requestLandscapeFullscreen() {
+  const root = document.documentElement;
+
+  try {
+    if (!document.fullscreenElement && root.requestFullscreen) {
+      await root.requestFullscreen({ navigationUI: "hide" });
+    }
+  } catch {
+    // Some mobile browsers only allow fullscreen from installed PWA mode.
+  }
+
+  try {
+    if (screen.orientation && screen.orientation.lock) {
+      await screen.orientation.lock("landscape");
+    }
+  } catch {
+    // iOS Safari and some in-app browsers do not allow orientation locking.
+  }
+}
+
+function showGameScreen() {
+  isGameScreenActive = true;
+  setupScreen.hidden = true;
+  gameScreen.hidden = false;
+  document.body.classList.add("is-game-active");
+  appRoot.classList.add("is-playing");
+  updateOrientationPrompt();
+}
+
+async function showSetupScreen() {
+  cancelLevelCountdown();
+  cancelRestartCountdown();
+  pendingStartAfterLandscape = false;
+  pendingNewGameAfterLandscape = false;
+  isGameScreenActive = false;
+  state.running = false;
+  stopMusic();
+  keys.left = false;
+  keys.right = false;
+  rotatePrompt.hidden = true;
+  setupScreen.hidden = false;
+  gameScreen.hidden = true;
+  document.body.classList.remove("is-game-active");
+  appRoot.classList.remove("is-playing");
+  setOverlay("", "", { visible: false });
+  syncButton();
+  updateHud();
+
+  try {
+    if (screen.orientation && screen.orientation.unlock) {
+      screen.orientation.unlock();
+    }
+  } catch {
+    // Orientation unlock is best effort.
+  }
+
+  try {
+    if (document.fullscreenElement && document.exitFullscreen) {
+      await document.exitFullscreen();
+    }
+  } catch {
+    // Leaving fullscreen can be denied outside a direct gesture.
+  }
+}
+
+async function startGameFromSetup() {
+  unlockAudioFromGesture();
+  setInstallHint("");
+  showGameScreen();
+  await requestLandscapeFullscreen();
+  pendingNewGameAfterLandscape = true;
+  updateOrientationPrompt();
+}
+
 function updateInstallButton() {
   const canPromptInstall = Boolean(deferredInstallPrompt);
   const showOnMobile = isTouchDevice() && !isStandalone();
@@ -707,15 +863,17 @@ function syncButton() {
     return;
   }
 
-  const label = state.running ? "暫停" : "開始遊戲";
-  startBtn.textContent = label;
-  toggleBtn.textContent = label;
+  startBtn.textContent = "開始遊玩";
+  toggleBtn.textContent = state.running ? "暫停" : "繼續";
 }
 
 function syncSettingsControls() {
   musicToggle.checked = preferences.music;
   sfxToggle.checked = preferences.sfx;
   hapticsToggle.checked = preferences.haptics;
+  setupMusicToggle.checked = preferences.music;
+  setupSfxToggle.checked = preferences.sfx;
+  setupHapticsToggle.checked = preferences.haptics;
   difficultySelect.value = state.difficulty;
   modeSelect.value = state.mode;
   themeSelect.value = state.theme;
@@ -723,6 +881,57 @@ function syncSettingsControls() {
 }
 
 let restartCountdownTimerId = null;
+
+function cancelLevelCountdown() {
+  if (levelCountdownTimerId !== null) {
+    window.clearInterval(levelCountdownTimerId);
+    levelCountdownTimerId = null;
+  }
+  pendingStartAfterLandscape = false;
+  overlay.classList.remove("countdown");
+}
+
+function beginLevelCountdown(title = `第 ${state.level} 關`) {
+  if (shouldShowRotatePrompt()) {
+    pendingStartAfterLandscape = true;
+    updateOrientationPrompt();
+    setOverlay("", "", { visible: false });
+    return;
+  }
+
+  cancelLevelCountdown();
+  cancelRestartCountdown();
+  state.running = false;
+  stopMusic();
+  syncButton();
+
+  let count = 3;
+  setOverlay(title, String(count), {
+    showActions: false,
+    showSettings: false,
+    stats: null,
+  });
+  overlay.classList.add("countdown");
+
+  levelCountdownTimerId = window.setInterval(() => {
+    if (shouldShowRotatePrompt()) {
+      cancelLevelCountdown();
+      pendingStartAfterLandscape = true;
+      updateOrientationPrompt();
+      setOverlay("", "", { visible: false });
+      return;
+    }
+
+    count -= 1;
+    if (count > 0) {
+      overlayText.textContent = String(count);
+      return;
+    }
+
+    cancelLevelCountdown();
+    startOrResume();
+  }, 1000);
+}
 
 function cancelRestartCountdown() {
   if (restartCountdownTimerId !== null) {
@@ -734,6 +943,7 @@ function cancelRestartCountdown() {
 }
 
 function startRestartCountdown() {
+  cancelLevelCountdown();
   cancelRestartCountdown();
   state.running = false;
   stopMusic();
@@ -750,8 +960,7 @@ function startRestartCountdown() {
     overlayText.textContent = `${state.restartCountdown} 秒後自動開始新局。`;
     if (state.restartCountdown <= 0) {
       cancelRestartCountdown();
-      restartGame();
-      startOrResume();
+      restartGameAndCountdown("重新開始");
     }
   }, 1000);
 }
@@ -883,7 +1092,9 @@ function resetPositions() {
   resetBallsOnPaddle();
 }
 
-function restartGame() {
+function restartGame(options = {}) {
+  const { countGame = true, showStartOverlay = true } = options;
+  cancelLevelCountdown();
   cancelRestartCountdown();
   state.running = false;
   state.gameOver = false;
@@ -904,8 +1115,10 @@ function restartGame() {
   bullets = [];
   floatingTexts = [];
 
-  records.gamesPlayed += 1;
-  saveRecords();
+  if (countGame) {
+    records.gamesPlayed += 1;
+    saveRecords();
+  }
 
   createBricks(state.level);
   sessionStats.totalBricks = bricks.length;
@@ -913,15 +1126,36 @@ function restartGame() {
   updateHud();
   syncSettingsControls();
   evaluateAchievements();
-  setOverlay("打磚塊", "按空白鍵、開始遊戲或手機按鈕發射球。", {
-    showActions: true,
-    showSettings: true,
-    stats: getOverlayStatItems(),
-  });
+  if (showStartOverlay) {
+    setOverlay("打磚塊", "按空白鍵、開始遊戲或手機按鈕發射球。", {
+      showActions: true,
+      showSettings: true,
+      stats: getOverlayStatItems(),
+    });
+  }
   syncButton();
 }
 
+function restartGameAndCountdown(title = "重新開始") {
+  resizeCanvasForScreen();
+  restartGame({ showStartOverlay: false });
+  beginLevelCountdown(title);
+}
+
 function startOrResume() {
+  if (!isGameScreenActive) {
+    startGameFromSetup();
+    return;
+  }
+
+  if (shouldShowRotatePrompt()) {
+    pendingStartAfterLandscape = true;
+    updateOrientationPrompt();
+    return;
+  }
+
+  cancelLevelCountdown();
+
   if (state.gameOver) {
     restartGame();
   }
@@ -942,6 +1176,7 @@ function startOrResume() {
 }
 
 function pauseGame(showSettings = true) {
+  cancelLevelCountdown();
   state.running = false;
   stopMusic();
   setOverlay("已暫停", "可以調整設定、重新開始，或繼續這一局。", {
@@ -1013,11 +1248,8 @@ function nextLevel() {
   createBricks(state.level);
   sessionStats.totalBricks = bricks.length;
   resetPositions();
-  setOverlay(`第 ${state.level} 關`, "節奏不錯，下一關會加入更多變化。", {
-    showActions: true,
-    showSettings: false,
-    stats: getOverlayStatItems(),
-  });
+  updateHud();
+  beginLevelCountdown(`第 ${state.level} 關`);
   syncButton();
 }
 
@@ -1754,10 +1986,14 @@ function gameLoop(ts) {
 function togglePlayState() {
   unlockAudioFromGesture();
   setInstallHint("");
-  if (state.running) {
+  if (!isGameScreenActive) {
+    startGameFromSetup();
+  } else if (state.running) {
     pauseGame(true);
+  } else if (state.gameOver) {
+    restartGameAndCountdown("重新開始");
   } else {
-    startOrResume();
+    beginLevelCountdown("準備開始");
   }
 }
 
@@ -1775,6 +2011,11 @@ function openSettingsMenu() {
 }
 
 function openVersionPanel() {
+  if (!isGameScreenActive) {
+    setInstallHint(`目前版本 ${APP_VERSION}：${CHANGELOG.join("、")}`);
+    return;
+  }
+
   if (state.running) {
     pauseGame(false);
   }
@@ -1811,6 +2052,7 @@ function bindHoldButton(button, onPress, onRelease) {
 function updatePreference(key, value) {
   preferences[key] = value;
   savePreferences();
+  syncSettingsControls();
   if (key === "music" && !value) {
     stopMusic();
   }
@@ -1823,7 +2065,7 @@ function restartForModeChange() {
   preferences.mode = state.mode;
   preferences.difficulty = state.difficulty;
   savePreferences();
-  restartGame();
+  restartGame({ countGame: false, showStartOverlay: isGameScreenActive });
 }
 
 window.addEventListener("keydown", (event) => {
@@ -1852,14 +2094,16 @@ window.addEventListener("keydown", (event) => {
 
   if (key === "escape" || key === "p") {
     event.preventDefault();
-    if (state.running) {
+    if (isGameScreenActive && state.running) {
       pauseGame(true);
     }
   }
 
   if (key === "r") {
     event.preventDefault();
-    startRestartCountdown();
+    if (isGameScreenActive) {
+      startRestartCountdown();
+    }
   }
 });
 
@@ -1881,6 +2125,11 @@ window.addEventListener("blur", () => {
   }
   keys.left = false;
   keys.right = false;
+});
+
+window.addEventListener("resize", updateOrientationPrompt);
+window.addEventListener("orientationchange", () => {
+  window.setTimeout(updateOrientationPrompt, 180);
 });
 
 canvas.addEventListener("mousemove", (event) => {
@@ -1911,8 +2160,8 @@ canvas.addEventListener("touchmove", (event) => {
 
 startBtn.addEventListener("click", togglePlayState);
 toggleBtn.addEventListener("click", togglePlayState);
-resumeBtn.addEventListener("click", startOrResume);
-restartBtn.addEventListener("click", restartGame);
+resumeBtn.addEventListener("click", () => beginLevelCountdown("準備繼續"));
+restartBtn.addEventListener("click", () => restartGameAndCountdown("重新開始"));
 quickRestartBtn.addEventListener("click", () => {
   if (state.restartCountdown > 0) {
     cancelRestartCountdown();
@@ -1923,6 +2172,8 @@ quickRestartBtn.addEventListener("click", () => {
 });
 settingsBtn.addEventListener("click", openSettingsMenu);
 versionBtn.addEventListener("click", openVersionPanel);
+backToSetupBtn.addEventListener("click", showSetupScreen);
+backToSetupOverlayBtn.addEventListener("click", showSetupScreen);
 
 fireBtn.addEventListener("click", () => {
   unlockAudioFromGesture();
@@ -1932,6 +2183,9 @@ fireBtn.addEventListener("click", () => {
 musicToggle.addEventListener("change", () => updatePreference("music", musicToggle.checked));
 sfxToggle.addEventListener("change", () => updatePreference("sfx", sfxToggle.checked));
 hapticsToggle.addEventListener("change", () => updatePreference("haptics", hapticsToggle.checked));
+setupMusicToggle.addEventListener("change", () => updatePreference("music", setupMusicToggle.checked));
+setupSfxToggle.addEventListener("change", () => updatePreference("sfx", setupSfxToggle.checked));
+setupHapticsToggle.addEventListener("change", () => updatePreference("haptics", setupHapticsToggle.checked));
 
 difficultySelect.addEventListener("change", () => {
   state.difficulty = difficultySelect.value;
@@ -2033,7 +2287,7 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-restartGame();
+restartGame({ countGame: false, showStartOverlay: false });
 renderAchievements();
 updateInstallButton();
 requestAnimationFrame(gameLoop);
