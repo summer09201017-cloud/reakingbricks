@@ -50,8 +50,11 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 const CHANGELOG = [
+  "修正 PC 遊戲畫面置中與寬螢幕裁切問題",
+  "提升音樂與碰撞音效音量，並改善音訊解鎖流程",
+  "加厚底板並加入手機相對拖曳、PC 點畫布與 Enter 開始",
   "新增設定頁、橫向全螢幕遊戲頁與手機旋轉提示",
   "新增關卡開始倒數與精簡遊戲 HUD",
   "新增主題切換與立體磚塊視覺",
@@ -62,6 +65,9 @@ const CHANGELOG = [
 const BALL_RADIUS = 8;
 const BIG_BALL_RADIUS = 13;
 const BASE_CANVAS_HEIGHT = 560;
+const PADDLE_HEIGHT = 22;
+const PADDLE_BOTTOM_GAP = 28;
+const TOUCH_DRAG_SENSITIVITY = 1.18;
 const MAX_BALLS = 6;
 const POWERUP_LIMIT_PER_TYPE = 2;
 const STORAGE_KEYS = {
@@ -206,11 +212,18 @@ const keys = {
 
 const paddle = {
   width: 136,
-  height: 14,
+  height: PADDLE_HEIGHT,
   x: 0,
-  y: canvas.height - 42,
+  y: canvas.height - PADDLE_BOTTOM_GAP - PADDLE_HEIGHT,
   speed: 8,
   dx: 0,
+};
+
+const touchControl = {
+  active: false,
+  startX: 0,
+  startPaddleX: 0,
+  moved: false,
 };
 
 let balls = [];
@@ -425,29 +438,36 @@ function vibrate(pattern) {
 
 function ensureAudioReady() {
   if (audioCtx) {
-    if (audioCtx.state === "suspended") {
-      audioCtx.resume();
-    }
-    return;
+    return audioCtx;
   }
 
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) {
-    return;
+    return null;
   }
 
   audioCtx = new AudioContextClass();
 
   musicGain = audioCtx.createGain();
-  musicGain.gain.value = 0.06;
+  musicGain.gain.value = 0.14;
   musicGain.connect(audioCtx.destination);
 
   sfxGain = audioCtx.createGain();
-  sfxGain.gain.value = 0.22;
+  sfxGain.gain.value = 0.5;
   sfxGain.connect(audioCtx.destination);
 
   nextMusicTime = audioCtx.currentTime + 0.05;
   musicStepIndex = 0;
+  return audioCtx;
+}
+
+function resumeAudioFromGesture() {
+  const context = ensureAudioReady();
+  if (!context || context.state !== "suspended") {
+    return Promise.resolve();
+  }
+
+  return context.resume().catch(() => {});
 }
 
 function startMusic() {
@@ -455,8 +475,17 @@ function startMusic() {
     return;
   }
 
-  ensureAudioReady();
-  if (!audioCtx || !musicGain || musicTimerId !== null) {
+  const context = ensureAudioReady();
+  if (!context || !musicGain || musicTimerId !== null) {
+    return;
+  }
+
+  if (context.state === "suspended") {
+    context.resume().then(() => {
+      if (state.running) {
+        startMusic();
+      }
+    }).catch(() => {});
     return;
   }
 
@@ -471,11 +500,11 @@ function startMusic() {
       const frequency = MUSIC_PATTERN[musicStepIndex % MUSIC_PATTERN.length];
       const oscillator = audioCtx.createOscillator();
       const envelope = audioCtx.createGain();
-      oscillator.type = "sine";
+      oscillator.type = "triangle";
       oscillator.frequency.setValueAtTime(frequency, nextMusicTime);
 
       envelope.gain.setValueAtTime(0.0001, nextMusicTime);
-      envelope.gain.linearRampToValueAtTime(0.055, nextMusicTime + 0.018);
+      envelope.gain.linearRampToValueAtTime(0.12, nextMusicTime + 0.018);
       envelope.gain.exponentialRampToValueAtTime(0.0001, nextMusicTime + MUSIC_STEP * 0.95);
 
       oscillator.connect(envelope);
@@ -505,20 +534,25 @@ function stopMusic() {
 }
 
 function playBrickHitSound() {
-  if (!preferences.sfx || !audioCtx || !sfxGain) {
+  if (!preferences.sfx) {
     return;
   }
 
-  const now = audioCtx.currentTime;
-  const oscillator = audioCtx.createOscillator();
-  const envelope = audioCtx.createGain();
+  const context = ensureAudioReady();
+  if (!context || context.state !== "running" || !sfxGain) {
+    return;
+  }
+
+  const now = context.currentTime;
+  const oscillator = context.createOscillator();
+  const envelope = context.createGain();
 
   oscillator.type = "triangle";
   oscillator.frequency.setValueAtTime(880, now);
   oscillator.frequency.exponentialRampToValueAtTime(420, now + 0.07);
 
   envelope.gain.setValueAtTime(0.0001, now);
-  envelope.gain.exponentialRampToValueAtTime(0.09, now + 0.004);
+  envelope.gain.exponentialRampToValueAtTime(0.18, now + 0.004);
   envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
 
   oscillator.connect(envelope);
@@ -529,14 +563,11 @@ function playBrickHitSound() {
 }
 
 function unlockAudioFromGesture() {
-  ensureAudioReady();
-  if (audioCtx && audioCtx.state === "suspended") {
-    audioCtx.resume();
-  }
-
-  if (state.running) {
-    startMusic();
-  }
+  resumeAudioFromGesture().then(() => {
+    if (state.running) {
+      startMusic();
+    }
+  });
 }
 
 function addScore(points) {
@@ -739,7 +770,7 @@ function resizeCanvasForScreen() {
 
   canvas.width = nextWidth;
   canvas.height = BASE_CANVAS_HEIGHT;
-  paddle.y = canvas.height - 42;
+  positionPaddleY();
   resetStarField();
 }
 
@@ -980,6 +1011,10 @@ function setBallRadius(radius) {
   }
 }
 
+function positionPaddleY() {
+  paddle.y = canvas.height - PADDLE_BOTTOM_GAP - paddle.height;
+}
+
 function clearTemporaryPowerups() {
   state.gunTimer = 0;
   state.shotCooldown = 0;
@@ -1087,6 +1122,7 @@ function launchBall(ball) {
 }
 
 function resetPositions() {
+  positionPaddleY();
   paddle.x = (canvas.width - paddle.width) * 0.5;
   paddle.dx = 0;
   resetBallsOnPaddle();
@@ -1253,18 +1289,45 @@ function nextLevel() {
   syncButton();
 }
 
-function movePaddleTo(clientX) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const x = (clientX - rect.left) * scaleX;
-  paddle.x = clamp(x - paddle.width * 0.5, 0, canvas.width - paddle.width);
-
+function syncStuckBallsWithPaddle() {
   for (let i = 0; i < balls.length; i += 1) {
     if (balls[i].stuck) {
       balls[i].x = paddle.x + paddle.width * 0.5;
       balls[i].y = paddle.y - balls[i].radius - 1;
     }
   }
+}
+
+function getCanvasScaleX() {
+  const rect = canvas.getBoundingClientRect();
+  return canvas.width / rect.width;
+}
+
+function movePaddleTo(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = getCanvasScaleX();
+  const x = (clientX - rect.left) * scaleX;
+  paddle.x = clamp(x - paddle.width * 0.5, 0, canvas.width - paddle.width);
+  syncStuckBallsWithPaddle();
+}
+
+function movePaddleByTouchDelta(clientX) {
+  const delta = (clientX - touchControl.startX) * getCanvasScaleX() * TOUCH_DRAG_SENSITIVITY;
+  paddle.x = clamp(touchControl.startPaddleX + delta, 0, canvas.width - paddle.width);
+  syncStuckBallsWithPaddle();
+}
+
+function startFromCanvasIfIdle() {
+  if (!isGameScreenActive || state.running || shouldShowRotatePrompt() || levelCountdownTimerId !== null) {
+    return false;
+  }
+
+  if (state.gameOver) {
+    restartGameAndCountdown("重新開始");
+  } else {
+    beginLevelCountdown("準備開始");
+  }
+  return true;
 }
 
 function updatePaddle(step) {
@@ -1281,12 +1344,7 @@ function updatePaddle(step) {
     paddle.x = clamp(paddle.x, 0, canvas.width - paddle.width);
   }
 
-  for (let i = 0; i < balls.length; i += 1) {
-    if (balls[i].stuck) {
-      balls[i].x = paddle.x + paddle.width * 0.5;
-      balls[i].y = paddle.y - balls[i].radius - 1;
-    }
-  }
+  syncStuckBallsWithPaddle();
 }
 
 function updateBricks(step) {
@@ -2082,7 +2140,7 @@ window.addEventListener("keydown", (event) => {
     keys.right = true;
   }
 
-  if (key === " " || key === "spacebar") {
+  if (key === " " || key === "spacebar" || key === "enter") {
     event.preventDefault();
     togglePlayState();
   }
@@ -2139,6 +2197,9 @@ canvas.addEventListener("mousemove", (event) => {
 canvas.addEventListener("mousedown", (event) => {
   unlockAudioFromGesture();
   movePaddleTo(event.clientX);
+  if (startFromCanvasIfIdle()) {
+    return;
+  }
   fireBullets();
 });
 
@@ -2146,17 +2207,34 @@ canvas.addEventListener("touchstart", (event) => {
   event.preventDefault();
   if (event.touches[0]) {
     unlockAudioFromGesture();
-    movePaddleTo(event.touches[0].clientX);
+    touchControl.active = true;
+    touchControl.startX = event.touches[0].clientX;
+    touchControl.startPaddleX = paddle.x;
+    touchControl.moved = false;
+    if (startFromCanvasIfIdle()) {
+      return;
+    }
     fireBullets();
   }
 }, { passive: false });
 
 canvas.addEventListener("touchmove", (event) => {
   event.preventDefault();
-  if (event.touches[0]) {
-    movePaddleTo(event.touches[0].clientX);
+  if (event.touches[0] && touchControl.active) {
+    if (Math.abs(event.touches[0].clientX - touchControl.startX) > 4) {
+      touchControl.moved = true;
+    }
+    movePaddleByTouchDelta(event.touches[0].clientX);
   }
 }, { passive: false });
+
+canvas.addEventListener("touchend", () => {
+  touchControl.active = false;
+}, { passive: true });
+
+canvas.addEventListener("touchcancel", () => {
+  touchControl.active = false;
+}, { passive: true });
 
 startBtn.addEventListener("click", togglePlayState);
 toggleBtn.addEventListener("click", togglePlayState);
