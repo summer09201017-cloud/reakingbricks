@@ -62,8 +62,9 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.5.0";
 const CHANGELOG = [
+  "新增護盾、磁鐵板、穿透球、分數加倍、吸寶物、炸彈球、慢動作與雙板寶物",
   "新增 LIFE 生命寶物，吃到可增加生命",
   "新增自動雷射、x3/x4 分裂球、道具持續時間條與每日挑戰分享",
   "新增快樂頌等背景音樂曲目切換",
@@ -93,6 +94,15 @@ const MAX_LIVES = 6;
 const POWERUP_LIMIT_PER_TYPE = 2;
 const GUN_DURATION = 14;
 const BIG_BALL_DURATION = 16;
+const MAGNET_DURATION = 16;
+const PIERCE_DURATION = 13;
+const SCORE_MULTIPLIER_DURATION = 15;
+const POWERUP_MAGNET_DURATION = 16;
+const TIME_SLOW_DURATION = 11;
+const SHADOW_PADDLE_DURATION = 16;
+const SCORE_MULTIPLIER = 2;
+const SHIELD_MAX_CHARGES = 3;
+const BOMB_BALL_MAX_CHARGES = 3;
 const AUTO_FIRE_INTERVAL = 0.32;
 const BOSS_INTERVAL = 4;
 const STORAGE_KEYS = {
@@ -175,6 +185,14 @@ const POWERUP_TYPES = [
   { type: "multiball4", label: "x4", color: "#f6bd60" },
   { type: "slow", label: "SLOW", color: "#8ed8ff" },
   { type: "life", label: "LIFE", color: "#7ae582" },
+  { type: "shield", label: "SAFE", color: "#67e8f9" },
+  { type: "magnet", label: "MAG", color: "#c084fc" },
+  { type: "pierce", label: "PEN", color: "#bef264" },
+  { type: "score2x", label: "2X", color: "#facc15" },
+  { type: "attract", label: "PULL", color: "#38bdf8" },
+  { type: "bombball", label: "BOOM", color: "#fb7185" },
+  { type: "timeslow", label: "TIME", color: "#93c5fd" },
+  { type: "shadow", label: "DUO", color: "#a7f3d0" },
 ];
 
 const ACHIEVEMENTS = [
@@ -228,6 +246,14 @@ const state = {
   gunTimer: 0,
   shotCooldown: 0,
   bigBallTimer: 0,
+  magnetTimer: 0,
+  pierceTimer: 0,
+  scoreMultiplierTimer: 0,
+  powerupMagnetTimer: 0,
+  timeSlowTimer: 0,
+  shadowPaddleTimer: 0,
+  shieldCharges: 0,
+  bombBallCharges: 0,
   combo: 0,
   comboTimer: 0,
   restartCountdown: 0,
@@ -658,7 +684,10 @@ function unlockAudioFromGesture() {
 }
 
 function addScore(points) {
-  state.score += points;
+  const awardedPoints = points > 0 && state.scoreMultiplierTimer > 0
+    ? Math.ceil(points * SCORE_MULTIPLIER)
+    : points;
+  state.score += awardedPoints;
   if (state.score > records.bestScore) {
     records.bestScore = state.score;
     saveRecords();
@@ -691,6 +720,28 @@ function getPowerupMeta(type) {
 
 function renderEffectHud() {
   const effects = [];
+  if (state.shieldCharges > 0) {
+    const meta = getPowerupMeta("shield");
+    effects.push({
+      label: meta.label,
+      name: "底部保險牆",
+      color: meta.color,
+      ratio: 1,
+      time: state.shieldCharges,
+      value: `x${state.shieldCharges}`,
+    });
+  }
+  if (state.bombBallCharges > 0) {
+    const meta = getPowerupMeta("bombball");
+    effects.push({
+      label: meta.label,
+      name: "炸彈球",
+      color: meta.color,
+      ratio: 1,
+      time: state.bombBallCharges,
+      value: `x${state.bombBallCharges}`,
+    });
+  }
   if (state.gunTimer > 0) {
     const meta = getPowerupMeta("laser");
     effects.push({
@@ -711,6 +762,66 @@ function renderEffectHud() {
       time: state.bigBallTimer,
     });
   }
+  if (state.magnetTimer > 0) {
+    const meta = getPowerupMeta("magnet");
+    effects.push({
+      label: meta.label,
+      name: "磁鐵板",
+      color: meta.color,
+      ratio: state.magnetTimer / MAGNET_DURATION,
+      time: state.magnetTimer,
+    });
+  }
+  if (state.pierceTimer > 0) {
+    const meta = getPowerupMeta("pierce");
+    effects.push({
+      label: meta.label,
+      name: "穿透球",
+      color: meta.color,
+      ratio: state.pierceTimer / PIERCE_DURATION,
+      time: state.pierceTimer,
+    });
+  }
+  if (state.scoreMultiplierTimer > 0) {
+    const meta = getPowerupMeta("score2x");
+    effects.push({
+      label: meta.label,
+      name: "分數加倍",
+      color: meta.color,
+      ratio: state.scoreMultiplierTimer / SCORE_MULTIPLIER_DURATION,
+      time: state.scoreMultiplierTimer,
+    });
+  }
+  if (state.powerupMagnetTimer > 0) {
+    const meta = getPowerupMeta("attract");
+    effects.push({
+      label: meta.label,
+      name: "吸寶物",
+      color: meta.color,
+      ratio: state.powerupMagnetTimer / POWERUP_MAGNET_DURATION,
+      time: state.powerupMagnetTimer,
+    });
+  }
+  if (state.timeSlowTimer > 0) {
+    const meta = getPowerupMeta("timeslow");
+    effects.push({
+      label: meta.label,
+      name: "慢動作",
+      color: meta.color,
+      ratio: state.timeSlowTimer / TIME_SLOW_DURATION,
+      time: state.timeSlowTimer,
+    });
+  }
+  if (state.shadowPaddleTimer > 0) {
+    const meta = getPowerupMeta("shadow");
+    effects.push({
+      label: meta.label,
+      name: "雙板",
+      color: meta.color,
+      ratio: state.shadowPaddleTimer / SHADOW_PADDLE_DURATION,
+      time: state.shadowPaddleTimer,
+    });
+  }
   if (state.comboTimer > 0 && state.combo >= 3) {
     effects.push({
       label: `x${state.combo}`,
@@ -721,11 +832,12 @@ function renderEffectHud() {
     });
   }
 
+  const formatEffectValue = (effect) => effect.value || `${effect.time.toFixed(1)}s`;
   effectHud.innerHTML = effects.map((effect) => `
     <div class="effect-chip">
       <i style="background:${effect.color}">${effect.label}</i>
       <span>${effect.name}</span>
-      <b>${effect.time.toFixed(1)}s</b>
+      <b>${formatEffectValue(effect)}</b>
       <div class="effect-bar"><div class="effect-fill" style="width:${Math.round(clamp(effect.ratio, 0, 1) * 100)}%; background:${effect.color}"></div></div>
     </div>
   `).join("");
@@ -1166,7 +1278,54 @@ function clearTemporaryPowerups() {
   state.gunTimer = 0;
   state.shotCooldown = 0;
   state.bigBallTimer = 0;
+  state.magnetTimer = 0;
+  state.pierceTimer = 0;
+  state.scoreMultiplierTimer = 0;
+  state.powerupMagnetTimer = 0;
+  state.timeSlowTimer = 0;
+  state.shadowPaddleTimer = 0;
   setBallRadius(BALL_RADIUS);
+}
+
+function resetPowerupCharges() {
+  state.shieldCharges = 0;
+  state.bombBallCharges = 0;
+}
+
+function getShadowPaddleRect() {
+  const width = clamp(paddle.width * 0.68, 72, 150);
+  return {
+    x: clamp(canvas.width - paddle.x - width, 0, canvas.width - width),
+    y: paddle.y,
+    width,
+    height: paddle.height,
+    shadow: true,
+  };
+}
+
+function getPaddleHitRects() {
+  const rects = [paddle];
+  if (state.shadowPaddleTimer > 0) {
+    rects.push(getShadowPaddleRect());
+  }
+  return rects;
+}
+
+function releaseStuckBalls() {
+  let released = 0;
+  for (let i = 0; i < balls.length; i += 1) {
+    if (balls[i].stuck) {
+      launchBall(balls[i]);
+      released += 1;
+    }
+  }
+
+  if (released > 0) {
+    spawnFloatingText("發射", paddle.x + paddle.width * 0.5, paddle.y - 18, "#c084fc");
+    startMusic();
+    return true;
+  }
+  return false;
 }
 
 function drawRoundedRect(x, y, w, h, r) {
@@ -1359,6 +1518,7 @@ function restartGame(options = {}) {
   sessionStats.highestLevel = 1;
   powerupSpawnCounts = createPowerupCounter();
   clearTemporaryPowerups();
+  resetPowerupCharges();
   stopMusic();
   resetRandomSource();
 
@@ -1767,6 +1927,32 @@ function applyPowerup(powerup) {
       addScore(80);
       spawnFloatingText("生命已滿 +80", powerup.x, paddle.y - 12, "#7ae582");
     }
+  } else if (powerup.type === "shield") {
+    state.shieldCharges = Math.min(SHIELD_MAX_CHARGES, state.shieldCharges + 1);
+    spawnFloatingText(`護盾 x${state.shieldCharges}`, powerup.x, paddle.y - 12, "#67e8f9");
+    vibrate([30, 35, 30]);
+  } else if (powerup.type === "magnet") {
+    state.magnetTimer = Math.max(state.magnetTimer, MAGNET_DURATION);
+    spawnFloatingText("磁鐵板啟動", powerup.x, paddle.y - 12, "#c084fc");
+  } else if (powerup.type === "pierce") {
+    state.pierceTimer = Math.max(state.pierceTimer, PIERCE_DURATION);
+    spawnFloatingText("穿透球啟動", powerup.x, paddle.y - 12, "#bef264");
+  } else if (powerup.type === "score2x") {
+    state.scoreMultiplierTimer = Math.max(state.scoreMultiplierTimer, SCORE_MULTIPLIER_DURATION);
+    spawnFloatingText(`分數 x${SCORE_MULTIPLIER}`, powerup.x, paddle.y - 12, "#facc15");
+  } else if (powerup.type === "attract") {
+    state.powerupMagnetTimer = Math.max(state.powerupMagnetTimer, POWERUP_MAGNET_DURATION);
+    spawnFloatingText("吸寶物啟動", powerup.x, paddle.y - 12, "#38bdf8");
+  } else if (powerup.type === "bombball") {
+    state.bombBallCharges = Math.min(BOMB_BALL_MAX_CHARGES, state.bombBallCharges + 1);
+    spawnFloatingText(`炸彈球 x${state.bombBallCharges}`, powerup.x, paddle.y - 12, "#fb7185");
+    vibrate([35, 25, 35]);
+  } else if (powerup.type === "timeslow") {
+    state.timeSlowTimer = Math.max(state.timeSlowTimer, TIME_SLOW_DURATION);
+    spawnFloatingText("慢動作", powerup.x, paddle.y - 12, "#93c5fd");
+  } else if (powerup.type === "shadow") {
+    state.shadowPaddleTimer = Math.max(state.shadowPaddleTimer, SHADOW_PADDLE_DURATION);
+    spawnFloatingText("雙板啟動", powerup.x, paddle.y - 12, "#a7f3d0");
   }
 
   evaluateAchievements();
@@ -1776,9 +1962,14 @@ function applyPowerup(powerup) {
 function updatePowerups(step) {
   for (let i = powerups.length - 1; i >= 0; i -= 1) {
     const powerup = powerups[i];
+    const half = powerup.size * 0.5;
+    if (state.powerupMagnetTimer > 0) {
+      const targetX = paddle.x + paddle.width * 0.5;
+      const pull = clamp((targetX - powerup.x) * 0.065, -4.4, 4.4);
+      powerup.x = clamp(powerup.x + pull * step, half, canvas.width - half);
+    }
     powerup.y += powerup.vy * step;
 
-    const half = powerup.size * 0.5;
     const hitsY = powerup.y + half >= paddle.y && powerup.y - half <= paddle.y + paddle.height;
     const hitsX = powerup.x + half >= paddle.x && powerup.x - half <= paddle.x + paddle.width;
 
@@ -1822,7 +2013,22 @@ function handleWallCollision(ball) {
     ball.vy *= -1;
   }
 
-  return ball.y - ball.radius > canvas.height;
+  if (ball.y - ball.radius > canvas.height) {
+    if (state.shieldCharges > 0) {
+      state.shieldCharges -= 1;
+      ball.y = canvas.height - ball.radius - 8;
+      ball.vy = -Math.max(5.2, Math.abs(ball.vy) * 0.92);
+      ball.vx += (random() - 0.5) * 1.2;
+      spawnFloatingText(`護盾擋下 x${state.shieldCharges}`, canvas.width * 0.5, canvas.height - 42, "#67e8f9");
+      playBrickHitSound();
+      vibrate([45, 35, 45]);
+      updateHud();
+      return false;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function handlePaddleCollision(ball) {
@@ -1830,16 +2036,28 @@ function handlePaddleCollision(ball) {
     return;
   }
 
-  const hitsY = ball.y + ball.radius >= paddle.y && ball.y - ball.radius <= paddle.y + paddle.height;
-  const hitsX = ball.x + ball.radius >= paddle.x && ball.x - ball.radius <= paddle.x + paddle.width;
+  const hitRect = getPaddleHitRects().find((rect) => {
+    const hitsY = ball.y + ball.radius >= rect.y && ball.y - ball.radius <= rect.y + rect.height;
+    const hitsX = ball.x + ball.radius >= rect.x && ball.x - ball.radius <= rect.x + rect.width;
+    return hitsX && hitsY;
+  });
 
-  if (!hitsX || !hitsY) {
+  if (!hitRect) {
     return;
   }
 
-  ball.y = paddle.y - ball.radius - 0.1;
+  ball.y = hitRect.y - ball.radius - 0.1;
 
-  const hitPosition = (ball.x - (paddle.x + paddle.width * 0.5)) / (paddle.width * 0.5);
+  if (state.magnetTimer > 0) {
+    ball.stuck = true;
+    ball.vx = 0;
+    ball.vy = 0;
+    syncStuckBallsWithPaddle();
+    spawnFloatingText("瞄準再發射", paddle.x + paddle.width * 0.5, paddle.y - 18, "#c084fc");
+    return;
+  }
+
+  const hitPosition = (ball.x - (hitRect.x + hitRect.width * 0.5)) / (hitRect.width * 0.5);
   const speed = Math.min(9.8, Math.hypot(ball.vx, ball.vy) * 1.02);
   const angle = hitPosition * (Math.PI / 3);
 
@@ -1959,13 +2177,23 @@ function handleBrickCollision(ball) {
     const hitVertical = prevY + ball.radius <= brick.y || prevY - ball.radius >= brick.y + brick.height;
     const hitHorizontal = prevX + ball.radius <= brick.x || prevX - ball.radius >= brick.x + brick.width;
 
-    if (hitHorizontal && !hitVertical) {
-      ball.vx *= -1;
-    } else {
-      ball.vy *= -1;
+    const isPiercing = state.pierceTimer > 0;
+    if (!isPiercing) {
+      if (hitHorizontal && !hitVertical) {
+        ball.vx *= -1;
+      } else {
+        ball.vy *= -1;
+      }
     }
 
     damageBrick(brick);
+    if (state.bombBallCharges > 0) {
+      state.bombBallCharges -= 1;
+      explodeBrick(brick);
+      spawnFloatingText("炸彈球", brick.x + brick.width * 0.5, brick.y, "#fb7185");
+      vibrate([35, 25, 35]);
+      updateHud();
+    }
     if (brick.special === "bounce") {
       const rotated = rotateVector(ball.vx, ball.vy, random() < 0.5 ? -0.55 : 0.55);
       ball.vx = rotated.vx;
@@ -1979,6 +2207,12 @@ function handleBrickCollision(ball) {
       speedBall(ball, 1.03);
     }
     checkLevelCleared();
+
+    if (isPiercing) {
+      ball.x += ball.vx * 1.4;
+      ball.y += ball.vy * 1.4;
+      return;
+    }
 
     const speed = Math.hypot(ball.vx, ball.vy);
     const targetSpeed = Math.min(9.8, speed * 1.003);
@@ -2108,6 +2342,55 @@ function updateTimers(deltaSec) {
     if (before > 0 && state.bigBallTimer === 0) {
       setBallRadius(BALL_RADIUS);
       spawnFloatingText("巨球結束", paddle.x + paddle.width * 0.5, paddle.y - 16, "#ffd488");
+    }
+  }
+
+  if (state.magnetTimer > 0) {
+    const before = state.magnetTimer;
+    state.magnetTimer = Math.max(0, state.magnetTimer - deltaSec);
+    if (before > 0 && state.magnetTimer === 0) {
+      releaseStuckBalls();
+      spawnFloatingText("磁鐵結束", paddle.x + paddle.width * 0.5, paddle.y - 16, "#c084fc");
+    }
+  }
+
+  if (state.pierceTimer > 0) {
+    const before = state.pierceTimer;
+    state.pierceTimer = Math.max(0, state.pierceTimer - deltaSec);
+    if (before > 0 && state.pierceTimer === 0) {
+      spawnFloatingText("穿透結束", paddle.x + paddle.width * 0.5, paddle.y - 16, "#bef264");
+    }
+  }
+
+  if (state.scoreMultiplierTimer > 0) {
+    const before = state.scoreMultiplierTimer;
+    state.scoreMultiplierTimer = Math.max(0, state.scoreMultiplierTimer - deltaSec);
+    if (before > 0 && state.scoreMultiplierTimer === 0) {
+      spawnFloatingText("加倍結束", paddle.x + paddle.width * 0.5, paddle.y - 16, "#facc15");
+    }
+  }
+
+  if (state.powerupMagnetTimer > 0) {
+    const before = state.powerupMagnetTimer;
+    state.powerupMagnetTimer = Math.max(0, state.powerupMagnetTimer - deltaSec);
+    if (before > 0 && state.powerupMagnetTimer === 0) {
+      spawnFloatingText("吸寶物結束", paddle.x + paddle.width * 0.5, paddle.y - 16, "#38bdf8");
+    }
+  }
+
+  if (state.timeSlowTimer > 0) {
+    const before = state.timeSlowTimer;
+    state.timeSlowTimer = Math.max(0, state.timeSlowTimer - deltaSec);
+    if (before > 0 && state.timeSlowTimer === 0) {
+      spawnFloatingText("慢動作結束", paddle.x + paddle.width * 0.5, paddle.y - 16, "#93c5fd");
+    }
+  }
+
+  if (state.shadowPaddleTimer > 0) {
+    const before = state.shadowPaddleTimer;
+    state.shadowPaddleTimer = Math.max(0, state.shadowPaddleTimer - deltaSec);
+    if (before > 0 && state.shadowPaddleTimer === 0) {
+      spawnFloatingText("雙板結束", paddle.x + paddle.width * 0.5, paddle.y - 16, "#a7f3d0");
     }
   }
 }
@@ -2257,7 +2540,45 @@ function drawBullets() {
   }
 }
 
+function drawShieldWall() {
+  if (state.shieldCharges <= 0) {
+    return;
+  }
+
+  const y = canvas.height - 8;
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.shadowColor = "#67e8f9";
+  ctx.shadowBlur = 16;
+  drawRoundedRect(18, y - 5, canvas.width - 36, 8, 4);
+  ctx.fillStyle = "#67e8f9";
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#06283f";
+  ctx.font = "bold 11px Trebuchet MS";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`SAFE x${state.shieldCharges}`, canvas.width * 0.5, y - 1);
+  ctx.restore();
+}
+
 function drawPaddle() {
+  if (state.shadowPaddleTimer > 0) {
+    const shadow = getShadowPaddleRect();
+    ctx.save();
+    ctx.globalAlpha = 0.68;
+    drawRoundedRect(shadow.x, shadow.y, shadow.width, shadow.height, 7);
+    const shadowGradient = ctx.createLinearGradient(shadow.x, shadow.y, shadow.x, shadow.y + shadow.height);
+    shadowGradient.addColorStop(0, "#e6fff5");
+    shadowGradient.addColorStop(1, "#5eead4");
+    ctx.fillStyle = shadowGradient;
+    ctx.fill();
+    ctx.strokeStyle = "#064e3b";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   drawRoundedRect(paddle.x, paddle.y, paddle.width, paddle.height, 7);
   const theme = getThemeConfig();
   const gradient = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x, paddle.y + paddle.height);
@@ -2277,6 +2598,12 @@ function drawPaddle() {
     drawRoundedRect(paddle.x + paddle.width - 14, paddle.y - 8, 7, 8, 2);
     ctx.fill();
   }
+
+  if (state.magnetTimer > 0) {
+    ctx.fillStyle = "#c084fc";
+    drawRoundedRect(paddle.x + paddle.width * 0.5 - 18, paddle.y - 7, 36, 5, 3);
+    ctx.fill();
+  }
 }
 
 function drawBalls() {
@@ -2291,8 +2618,15 @@ function drawBalls() {
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
     ctx.fillStyle = gradient;
-    ctx.shadowColor = state.bigBallTimer > 0 ? "#ffd166" : "#62d4ff";
-    ctx.shadowBlur = state.bigBallTimer > 0 ? 15 : 12;
+    const glowColor = state.pierceTimer > 0
+      ? "#bef264"
+      : state.bombBallCharges > 0
+        ? "#fb7185"
+        : state.bigBallTimer > 0
+          ? "#ffd166"
+          : "#62d4ff";
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = state.pierceTimer > 0 || state.bombBallCharges > 0 || state.bigBallTimer > 0 ? 16 : 12;
     ctx.fill();
     ctx.shadowBlur = 0;
   }
@@ -2325,6 +2659,30 @@ function drawStatus() {
   if (state.bigBallTimer > 0) {
     activeEffects.push(`巨球：${state.bigBallTimer.toFixed(1)} 秒`);
   }
+  if (state.shieldCharges > 0) {
+    activeEffects.push(`護盾 x${state.shieldCharges}`);
+  }
+  if (state.bombBallCharges > 0) {
+    activeEffects.push(`炸彈 x${state.bombBallCharges}`);
+  }
+  if (state.magnetTimer > 0) {
+    activeEffects.push(`磁鐵：${state.magnetTimer.toFixed(1)} 秒`);
+  }
+  if (state.pierceTimer > 0) {
+    activeEffects.push(`穿透：${state.pierceTimer.toFixed(1)} 秒`);
+  }
+  if (state.scoreMultiplierTimer > 0) {
+    activeEffects.push(`分數 x${SCORE_MULTIPLIER}`);
+  }
+  if (state.powerupMagnetTimer > 0) {
+    activeEffects.push(`吸寶物：${state.powerupMagnetTimer.toFixed(1)} 秒`);
+  }
+  if (state.timeSlowTimer > 0) {
+    activeEffects.push(`慢動作：${state.timeSlowTimer.toFixed(1)} 秒`);
+  }
+  if (state.shadowPaddleTimer > 0) {
+    activeEffects.push(`雙板：${state.shadowPaddleTimer.toFixed(1)} 秒`);
+  }
   if (state.mode === "daily") {
     activeEffects.push("每日");
   }
@@ -2343,6 +2701,7 @@ function render() {
   drawBricks();
   drawPowerups();
   drawBullets();
+  drawShieldWall();
   drawPaddle();
   drawBalls();
   drawFloatingTexts();
@@ -2359,11 +2718,12 @@ function gameLoop(ts) {
   updatePaddle(step);
 
   if (state.running) {
-    updateBricks(step);
-    updateBalls(step);
+    const worldStep = step * (state.timeSlowTimer > 0 ? 0.62 : 1);
+    updateBricks(worldStep);
+    updateBalls(worldStep);
     if (state.running) {
-      updatePowerups(step);
-      updateBullets(step);
+      updatePowerups(worldStep);
+      updateBullets(worldStep);
       updateTimers(deltaSec);
     }
   }
@@ -2379,6 +2739,8 @@ function togglePlayState() {
   setInstallHint("");
   if (!isGameScreenActive) {
     startGameFromSetup();
+  } else if (state.running && releaseStuckBalls()) {
+    syncButton();
   } else if (state.running) {
     pauseGame(true);
   } else if (state.gameOver) {
@@ -2585,6 +2947,9 @@ canvas.addEventListener("mousedown", (event) => {
   if (startFromCanvasIfIdle()) {
     return;
   }
+  if (state.running && releaseStuckBalls()) {
+    return;
+  }
   fireBullets();
 });
 
@@ -2597,6 +2962,9 @@ canvas.addEventListener("touchstart", (event) => {
     touchControl.startPaddleX = paddle.x;
     touchControl.moved = false;
     if (startFromCanvasIfIdle()) {
+      return;
+    }
+    if (state.running && releaseStuckBalls()) {
       return;
     }
     fireBullets();

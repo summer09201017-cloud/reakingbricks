@@ -347,6 +347,38 @@ button:active {
   background: #7ae582;
 }
 
+.shield {
+  background: #67e8f9;
+}
+
+.magnet {
+  background: #c084fc;
+}
+
+.pierce {
+  background: #bef264;
+}
+
+.score2x {
+  background: #facc15;
+}
+
+.attract {
+  background: #38bdf8;
+}
+
+.bombball {
+  background: #fb7185;
+}
+
+.timeslow {
+  background: #93c5fd;
+}
+
+.shadow {
+  background: #a7f3d0;
+}
+
 .bomb {
   background: #ff9f9f;
 }
