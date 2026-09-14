@@ -1,7 +1,6 @@
-const CACHE_NAME = "breakout-pwa-v11";
+const CACHE_NAME = "breakout-pwa-v12";
 const ASSETS = [
   "./",
-  "./index.html",
   "./styles.css",
   "./game.js",
   "./manifest.webmanifest",
@@ -12,7 +11,7 @@ const ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)),
+    caches.open(CACHE_NAME).then((cache) => Promise.all(ASSETS.map((u) => cache.add(u).catch(() => null)))),
   );
 });
 
