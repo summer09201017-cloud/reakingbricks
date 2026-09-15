@@ -65,11 +65,12 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "2.0.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-15", items: [
+    "標準與挑戰難度的磚塊會定時下移，碰到紅色危險線會扣一命；休閒難度不下移",
     "Boss 會反擊：往下砸落石，落下前會有紅色預告線，護盾可以擋一次",
     "新增本機排行榜 Top 10，結算會顯示名次或「再多幾分能進榜」",
     "新增卡關輔助：同一關失誤兩次後自動加寬板子，過關後收回，可在設定關閉",
@@ -149,6 +150,14 @@ const ASSIST_MAX_STACKS = 3;
 // 👹 BOSS 反擊(0915):BOSS 原本只是一塊很厚的磚,打起來是「磨血」不是「戰鬥」。
 //    改成會往下砸落石。★ 照 beast-boss-kit 鐵則:一定要有紅色預告線(telegraph),
 //    判定=畫面 —— 無預警從天而降的秒殺對孩子只是「莫名其妙死掉」,不是難度。
+// ⬇ 磚塊下壓(0915):每隔一段時間整面往下移一格,製造時間壓力。
+//    ★ 依難度分級,休閒完全關閉 —— 這是給孩子玩的難度,不該有倒數壓力。
+//    ★ BOSS 關不下壓:BOSS 已經在砸落石,再加下壓等於兩套壓力疊在一起。
+//    ★ 壓到危險線不是直接 Game Over,而是扣一命並把磚塊推回去 —— 否則復活後
+//      磚塊還在線上,會變成「復活即死」的無限迴圈,一次把所有命吃光。
+const BRICK_ROW_PITCH = 32;          // 24 磚高 + 8 間距,和 createBricks 一致
+const DESCEND_PUSHBACK_ROWS = 3;     // 撞線扣命後把磚塊推回幾格
+const DESCEND_WARN_SEC = 2;          // 下壓前幾秒開始閃警告
 const BOSS_TELEGRAPH_SEC = 0.85;   // 預告線亮多久才真的砸下來
 const BOSS_ROCK_SPEED = 3.4;       // 落石速度(px / 16.67ms)
 const BOSS_ROCK_RADIUS = 9;
@@ -194,6 +203,7 @@ const STORAGE_KEYS = {
 
 const DIFFICULTIES = {
   easy: {
+    descendSec: 0,  // 休閒不下壓
     label: "休閒",
     lives: 4,
     paddleWidth: 164,
@@ -203,6 +213,7 @@ const DIFFICULTIES = {
     specialRate: 0.08,
   },
   normal: {
+    descendSec: 26,
     label: "標準",
     lives: 3,
     paddleWidth: 136,
@@ -212,6 +223,7 @@ const DIFFICULTIES = {
     specialRate: 0.14,
   },
   hard: {
+    descendSec: 17,
     label: "挑戰",
     lives: 2,
     paddleWidth: 116,
@@ -441,6 +453,8 @@ const state = {
   shake: 0,
   hitStop: 0,
   bossAttackTimer: 0,
+  descendTimer: 0,
+  descendShown: false,
   mode: preferences.mode in MODES ? preferences.mode : "classic",
   difficulty: preferences.difficulty in DIFFICULTIES ? preferences.difficulty : "normal",
   theme: preferences.theme in THEMES ? preferences.theme : "classic",
@@ -1866,6 +1880,8 @@ function restartGame(options = {}) {
   powerups = [];
   bossRocks = [];
   state.bossAttackTimer = 0;
+  state.descendTimer = 0;
+  state.descendShown = false;
   bullets = [];
   floatingTexts = [];
 
@@ -1978,6 +1994,7 @@ function loseLife() {
   powerups = [];
   bullets = [];
   bossRocks = [];   // 殘留落石會變成「看不見的傷害」,掉命時一定要清
+  state.descendTimer = 0;   // 復活後重新計時,不要一回來就被壓
   updateHud();
   addImpact(7, 0.08);
   vibrate([80, 40, 80]);
@@ -2052,6 +2069,7 @@ function nextLevel() {
   bullets = [];
   bossRocks = [];
   state.bossAttackTimer = 0;
+  state.descendTimer = 0;   // 新關重新計時,不要一進場就下壓
 
   createBricks(state.level);
   sessionStats.totalBricks = bricks.length;
@@ -2117,6 +2135,95 @@ function updatePaddle(step) {
   }
 
   syncStuckBallsWithPaddle();
+}
+
+// 危險線:磚塊碰到這條就扣一命。畫在板子上方一點,讓玩家看得到自己還有多少空間。
+function getDangerLineY() {
+  return paddle.y - 26;
+}
+
+// 這一關會不會下壓(休閒關閉、BOSS 關不壓)
+function isDescendActive() {
+  return getDifficultyConfig().descendSec > 0 && !getAliveBoss();
+}
+
+// 整面往下移 rows 格(負數 = 往上推回去)
+function shiftBricks(rows) {
+  const dy = rows * BRICK_ROW_PITCH;
+  for (let i = 0; i < bricks.length; i += 1) {
+    bricks[i].y += dy;
+  }
+}
+
+// 最低的那顆活磚的底緣
+function getLowestBrickBottom() {
+  let lowest = -Infinity;
+  for (let i = 0; i < bricks.length; i += 1) {
+    if (bricks[i].alive) {
+      lowest = Math.max(lowest, bricks[i].y + bricks[i].height);
+    }
+  }
+  return lowest;
+}
+
+function updateBrickDescent(deltaSec) {
+  if (!isDescendActive()) {
+    state.descendTimer = 0;
+    return;
+  }
+
+  const interval = getDifficultyConfig().descendSec;
+  if (state.descendTimer <= 0) {
+    state.descendTimer = interval;
+    return;
+  }
+
+  state.descendTimer -= deltaSec;
+  if (state.descendTimer > 0) {
+    return;
+  }
+
+  state.descendTimer = interval;
+  shiftBricks(1);
+  addImpact(2.4, 0.03);
+
+  // 第一次下壓時說明一次,之後不再囉嗦
+  if (!state.descendShown) {
+    state.descendShown = true;
+    spawnFloatingText("磚塊會定時下移，別讓它們碰到紅線", canvas.width * 0.5, canvas.height * 0.42, "#ffaf54");
+  }
+
+  if (getLowestBrickBottom() >= getDangerLineY()) {
+    // 撞線:扣一命,並把磚塊推回去。不推回去的話復活後還是壓在線上 => 復活即死迴圈。
+    shiftBricks(-DESCEND_PUSHBACK_ROWS);
+    spawnFloatingText("磚塊壓境！", canvas.width * 0.5, getDangerLineY() - 20, "#fb7185");
+    loseLife();
+  }
+}
+
+// 危險線本身:沒有下壓的難度不畫(畫了只會讓人以為有陷阱)
+function drawDangerLine() {
+  if (!isDescendActive()) {
+    return;
+  }
+
+  const y = getDangerLineY();
+  const lowest = getLowestBrickBottom();
+  const gapRows = lowest > -Infinity ? (y - lowest) / BRICK_ROW_PITCH : 99;
+  const soon = state.descendTimer > 0 && state.descendTimer <= DESCEND_WARN_SEC;
+  // 剩一格以內、或即將下壓時閃爍加粗,讓危險「看得見」而不只是數字
+  const urgent = gapRows <= 1.2 || soon;
+
+  ctx.save();
+  ctx.globalAlpha = urgent ? 0.45 + 0.35 * Math.abs(Math.sin(Date.now() / 110)) : 0.28;
+  ctx.strokeStyle = urgent ? "#ff4d4d" : "#ff9aa8";
+  ctx.lineWidth = urgent ? 3 : 2;
+  ctx.setLineDash([14, 10]);
+  ctx.beginPath();
+  ctx.moveTo(14, y);
+  ctx.lineTo(canvas.width - 14, y);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function updateBricks(step) {
@@ -3251,6 +3358,7 @@ function render() {
   }
 
   drawBackground();
+  drawDangerLine();
   drawBricks();
   drawPowerups();
   drawBullets();
@@ -3294,6 +3402,7 @@ function gameLoop(ts) {
       updateBullets(worldStep);
       updateBossAttack(deltaSec);
       updateBossRocks(worldStep, deltaSec);
+      updateBrickDescent(deltaSec);
       updateTimers(deltaSec);
     }
   }
