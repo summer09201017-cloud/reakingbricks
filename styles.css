@@ -916,3 +916,9 @@ kbd {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+/* 續玩按鈕：跟「開始遊玩」同級但用不同色，讓人一眼分得出「開新局」與「接上一局」 */
+.resume-btn {
+  background: linear-gradient(180deg, #7ae582, #43aa8b);
+  color: #05261c;
+}

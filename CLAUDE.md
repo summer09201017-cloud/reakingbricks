@@ -132,6 +132,12 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
 - 磚塊顏色由 `getBrickColor()` 決定：耐打度用「主題色調暗」表示，不再寫死紅色，
   否則高關卡所有磚塊同色，四個主題與關卡圖案都會看不出差別。
 - 每日挑戰使用日期、難度與固定字串產生 seed，同一天同難度會有一致的隨機序列。
+  續玩存檔會把 `seededRandom.getState()` 一起存，還原時 `setState()` 回去，
+  否則續玩之後的關卡序列會跟別人不一樣，就不再是「全世界今天同一局」。
+- 續玩存檔在 `STORAGE_KEYS.run`，schema 版本是 `RUN_SAVE_VERSION`。
+  **改過 brick / ball / powerup 任何欄位就要把版本 +1**：舊存檔還原出來會是壞場面，
+  寧可丟掉重來。存檔在掉命／過關／離開遊戲頁／`pagehide` 四處觸發，
+  在遊戲結束與按「開始遊玩」時清除。
   ⚠ 因此 `random()` **只能在遊戲邏輯裡呼叫，絕不可在 `render()` 裡用** ——
   畫面多震一幀就會偷走一個亂數，讓同一天同一關的磚塊配置跟著幀數變（0915 實錘）。
   純視覺的隨機（震屏抖動那類）一律用 `Math.random()`。

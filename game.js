@@ -11,6 +11,7 @@ const livesEl = document.getElementById("lives");
 const levelEl = document.getElementById("level");
 const modeLabel = document.getElementById("modeLabel");
 const startBtn = document.getElementById("startBtn");
+const resumeRunBtn = document.getElementById("resumeRunBtn");
 const toggleBtn = document.getElementById("toggleBtn");
 const leftBtn = document.getElementById("leftBtn");
 const rightBtn = document.getElementById("rightBtn");
@@ -65,11 +66,12 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.0.0";
+const APP_VERSION = "2.1.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-15", items: [
+    "新增續玩存檔：離開時自動保存整個場面，回來可按「繼續上一局」接著玩",
     "標準與挑戰難度的磚塊會定時下移，碰到紅色危險線會扣一命；休閒難度不下移",
     "Boss 會反擊：往下砸落石，落下前會有紅色預告線，護盾可以擋一次",
     "新增本機排行榜 Top 10，結算會顯示名次或「再多幾分能進榜」",
@@ -199,7 +201,13 @@ function addImpact(strength, stopSec = 0) {
 const STORAGE_KEYS = {
   preferences: "breakout.preferences.v2",
   records: "breakout.records.v2",
+  run: "breakout.run.v1",
 };
+
+// 💾 續玩存檔(0915)。★ schema 版本:場上物件的形狀一改,舊存檔還原出來就是壞的,
+//    寧可丟掉重來,也不要讓玩家接到一個半壞的局面。改過 brick/ball/powerup 欄位就要 +1。
+const RUN_SAVE_VERSION = 3;
+const RUN_SAVE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;   // 超過三天的存檔不留,接回來只會一頭霧水
 
 const DIFFICULTIES = {
   easy: {
@@ -504,6 +512,7 @@ let refreshingForUpdate = false;
 let isGameScreenActive = false;
 let pendingStartAfterLandscape = false;
 let pendingNewGameAfterLandscape = false;
+let pendingResumeAfterLandscape = false;   // 續玩:轉橫向後直接倒數,不可以走 restartGame(那會把場面清掉)
 let levelCountdownTimerId = null;
 
 const SONGS = {
@@ -653,6 +662,251 @@ function renderTopScores() {
   `).join("");
 }
 
+// ── 💾 續玩存檔 ────────────────────────────────────────────────────────────
+// 存的是「整個場面」而不是「關卡編號」：磚塊打到一半、寶物掉到一半、球在飛，
+// 回來時要接得上原本那一刻，不然等於只是記住進度而已。
+
+function hasStartedRun() {
+  return !state.gameOver && (state.score > 0 || state.level > 1 || countAliveBricks() < bricks.length);
+}
+
+function serializeRun() {
+  const stats = sessionStats;
+  return {
+    v: RUN_SAVE_VERSION,
+    savedAt: Date.now(),
+    dailyKey,
+    // seededRandom 抽到哪裡也要存，否則每日挑戰續玩後的序列會跟別人不一樣
+    rngState: typeof seededRandom.getState === "function" ? seededRandom.getState() : null,
+    mode: state.mode,
+    difficulty: state.difficulty,
+    theme: state.theme,
+    score: state.score,
+    lives: state.lives,
+    level: state.level,
+    levelName: state.levelName,
+    combo: state.combo,
+    comboTimer: state.comboTimer,
+    shieldCharges: state.shieldCharges,
+    bombBallCharges: state.bombBallCharges,
+    assistStacks: state.assistStacks,
+    assistWidthBonus: state.assistWidthBonus,
+    descendShown: state.descendShown,
+    timers: {
+      gun: state.gunTimer,
+      bigBall: state.bigBallTimer,
+      magnet: state.magnetTimer,
+      pierce: state.pierceTimer,
+      scoreMultiplier: state.scoreMultiplierTimer,
+      powerupMagnet: state.powerupMagnetTimer,
+      timeSlow: state.timeSlowTimer,
+      shadowPaddle: state.shadowPaddleTimer,
+    },
+    paddle: { x: paddle.x, width: paddle.width },
+    // 只存活著的磚：死掉的磚還原後也是死的，存了只是讓存檔變大
+    bricks: bricks.filter((brick) => brick.alive).map((brick) => ({
+      x: brick.x, bx: brick.baseX, y: brick.y, r: brick.row, c: brick.col,
+      w: brick.width, h: brick.height, hp: brick.hp, mhp: brick.maxHp,
+      sp: brick.special, mp: brick.movePhase, mr: brick.moveRange,
+    })),
+    totalBricks: stats.totalBricks,
+    balls: balls.map((ball) => ({ x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, s: ball.stuck })),
+    powerups: powerups.map((item) => ({ x: item.x, y: item.y, t: item.type })),
+    powerupSpawnCounts,
+    stats,
+  };
+}
+
+function saveRun() {
+  try {
+    if (!isGameScreenActive || state.gameOver || !hasStartedRun()) {
+      return;
+    }
+    saveStoredObject(STORAGE_KEYS.run, serializeRun());
+  } catch {
+    // 存檔壞掉絕不可以影響遊戲本身
+  }
+}
+
+function clearSavedRun() {
+  try {
+    window.localStorage.removeItem(STORAGE_KEYS.run);
+  } catch {
+    // 無痕模式拿不到 localStorage，忽略
+  }
+  updateResumeButton();
+}
+
+// 讀出「還能用」的存檔；版本不符、過期、或跨日的每日挑戰一律當作沒有。
+function loadSavedRun() {
+  let saved = null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEYS.run);
+    if (!raw) {
+      return null;
+    }
+    saved = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  if (!saved || saved.v !== RUN_SAVE_VERSION) {
+    return null;
+  }
+  if (!Number.isFinite(saved.savedAt) || Date.now() - saved.savedAt > RUN_SAVE_MAX_AGE_MS) {
+    return null;
+  }
+  if (!Array.isArray(saved.bricks) || !Array.isArray(saved.balls) || saved.bricks.length === 0) {
+    return null;   // 沒有磚 = 還原出來就是「一開場就過關」
+  }
+  if (!(saved.difficulty in DIFFICULTIES) || !(saved.mode in MODES)) {
+    return null;
+  }
+  // 每日挑戰跨日就作廢：今天的題目已經換了，接回昨天的局面沒有意義
+  if (saved.mode === "daily" && saved.dailyKey !== getTodayKey()) {
+    return null;
+  }
+  return saved;
+}
+
+function restoreRun(saved) {
+  cancelLevelCountdown();
+  cancelRestartCountdown();
+
+  state.mode = saved.mode;
+  state.difficulty = saved.difficulty;
+  state.theme = saved.theme in THEMES ? saved.theme : state.theme;
+  preferences.mode = state.mode;
+  preferences.difficulty = state.difficulty;
+  preferences.theme = state.theme;
+  savePreferences();
+
+  // 先把亂數來源建好再還原位置，順序反了就白做
+  resetRandomSource();
+  dailyKey = typeof saved.dailyKey === "string" ? saved.dailyKey : getTodayKey();
+  if (saved.rngState !== null && typeof seededRandom.setState === "function") {
+    seededRandom.setState(saved.rngState);
+  }
+
+  state.running = false;
+  state.gameOver = false;
+  state.score = Math.max(0, Math.floor(saved.score) || 0);
+  state.lives = clamp(Math.floor(saved.lives) || 1, 1, MAX_LIVES);
+  state.level = Math.max(1, Math.floor(saved.level) || 1);
+  state.levelName = typeof saved.levelName === "string" ? saved.levelName : "";
+  state.combo = Math.max(0, Math.floor(saved.combo) || 0);
+  state.comboTimer = Math.max(0, Number(saved.comboTimer) || 0);
+  state.shieldCharges = clamp(Math.floor(saved.shieldCharges) || 0, 0, SHIELD_MAX_CHARGES);
+  state.bombBallCharges = clamp(Math.floor(saved.bombBallCharges) || 0, 0, BOMB_BALL_MAX_CHARGES);
+  state.assistStacks = clamp(Math.floor(saved.assistStacks) || 0, 0, ASSIST_MAX_STACKS);
+  state.assistWidthBonus = Math.max(0, Number(saved.assistWidthBonus) || 0);
+  state.descendShown = !!saved.descendShown;
+  state.restartCountdown = 0;
+  state.shake = 0;
+  state.hitStop = 0;
+  state.bossAttackTimer = 0;
+  state.descendTimer = 0;
+
+  const timers = saved.timers || {};
+  state.gunTimer = Math.max(0, Number(timers.gun) || 0);
+  state.bigBallTimer = Math.max(0, Number(timers.bigBall) || 0);
+  state.magnetTimer = Math.max(0, Number(timers.magnet) || 0);
+  state.pierceTimer = Math.max(0, Number(timers.pierce) || 0);
+  state.scoreMultiplierTimer = Math.max(0, Number(timers.scoreMultiplier) || 0);
+  state.powerupMagnetTimer = Math.max(0, Number(timers.powerupMagnet) || 0);
+  state.timeSlowTimer = Math.max(0, Number(timers.timeSlow) || 0);
+  state.shadowPaddleTimer = Math.max(0, Number(timers.shadowPaddle) || 0);
+  state.shotCooldown = 0;
+
+  const savedStats = saved.stats && typeof saved.stats === "object" ? saved.stats : {};
+  sessionStats = { ...createSessionStats(), ...savedStats };
+  sessionStats.powerupCounts = { ...createPowerupCounter(), ...(savedStats.powerupCounts || {}) };
+  sessionStats.totalBricks = Math.max(0, Math.floor(saved.totalBricks) || 0);
+  powerupSpawnCounts = { ...createPowerupCounter(), ...(saved.powerupSpawnCounts || {}) };
+
+  const palette = getThemeConfig().palette;
+  bricks = saved.bricks.map((row) => {
+    const r = Math.max(0, Math.floor(row.r) || 0);
+    const c = Math.max(0, Math.floor(row.c) || 0);
+    const hp = Math.max(1, Math.floor(row.hp) || 1);
+    return {
+      x: Number(row.x) || 0,
+      baseX: Number(row.bx) || Number(row.x) || 0,
+      y: Number(row.y) || 0,
+      row: r,
+      col: c,
+      width: Math.max(1, Number(row.w) || 1),
+      height: Math.max(1, Number(row.h) || 1),
+      hp,
+      maxHp: Math.max(hp, Math.floor(row.mhp) || hp),
+      // 主題可能在存檔之後被改過，顏色重算才不會和目前主題打架
+      color: palette[(r + c) % palette.length],
+      alive: true,
+      special: typeof row.sp === "string" ? row.sp : null,
+      movePhase: Number(row.mp) || 0,
+      moveRange: Number(row.mr) || 0,
+    };
+  });
+  if (sessionStats.totalBricks < bricks.length) {
+    sessionStats.totalBricks = bricks.length;
+  }
+
+  paddle.width = clamp(Number(saved.paddle && saved.paddle.width) || getDifficultyConfig().paddleWidth, 100, 260);
+  positionPaddleY();
+  paddle.x = clamp(Number(saved.paddle && saved.paddle.x) || 0, 0, canvas.width - paddle.width);
+
+  setBallRadius(state.bigBallTimer > 0 ? BIG_BALL_RADIUS : BALL_RADIUS);
+  balls = saved.balls.slice(0, MAX_BALLS).map((ball) => ({
+    x: Number(ball.x) || 0,
+    y: Number(ball.y) || 0,
+    radius: getBallRadius(),
+    vx: Number(ball.vx) || 0,
+    vy: Number(ball.vy) || 0,
+    stuck: !!ball.s,
+  }));
+  if (balls.length === 0) {
+    resetBallsOnPaddle();
+  }
+
+  powerups = (Array.isArray(saved.powerups) ? saved.powerups : [])
+    .map((row) => {
+      const meta = POWERUP_TYPES.find((item) => item.type === row.t);
+      if (!meta) {
+        return null;   // 寶物種類改過名字的舊存檔：丟掉那一顆，不要還原成壞道具
+      }
+      return {
+        x: Number(row.x) || 0,
+        y: Number(row.y) || 0,
+        vy: 2.35,
+        size: 20,
+        type: meta.type,
+        label: meta.label,
+        color: meta.color,
+      };
+    })
+    .filter(Boolean);
+
+  bullets = [];
+  bossRocks = [];
+  floatingTexts = [];
+
+  applyTheme();
+  syncSettingsControls();
+  updateHud();
+  return true;
+}
+
+function updateResumeButton() {
+  if (!resumeRunBtn) {
+    return;
+  }
+  const saved = loadSavedRun();
+  resumeRunBtn.hidden = !saved;
+  if (saved) {
+    resumeRunBtn.textContent = `繼續上一局（第 ${saved.level} 關 · ${saved.score} 分）`;
+  }
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -666,15 +920,20 @@ function hashString(input) {
   return hash >>> 0;
 }
 
+// 亂數產生器。★ 額外掛上 getState/setState:續玩存檔要把「抽到第幾個」一起存,
+//    否則每日挑戰續玩後的後續關卡序列會跟別人不一樣,就不再是「全世界同一局」。
 function mulberry32(seed) {
   let value = seed >>> 0;
-  return () => {
+  const next = () => {
     value += 0x6d2b79f5;
     let t = value;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  next.getState = () => value >>> 0;
+  next.setState = (restored) => { value = Number(restored) >>> 0; };
+  return next;
 }
 
 function getTodayKey() {
@@ -1335,6 +1594,11 @@ function updateOrientationPrompt() {
     state.running = false;
     stopMusic();
     syncButton();
+  } else if (pendingResumeAfterLandscape) {
+    pendingResumeAfterLandscape = false;
+    resizeCanvasForScreen();
+    syncStuckBallsWithPaddle();
+    beginLevelCountdown("接續上一局");
   } else if (pendingNewGameAfterLandscape) {
     pendingNewGameAfterLandscape = false;
     resizeCanvasForScreen();
@@ -1379,8 +1643,10 @@ function showGameScreen() {
 async function showSetupScreen() {
   cancelLevelCountdown();
   cancelRestartCountdown();
+  saveRun();   // 回設定頁前先存,回來才接得上
   pendingStartAfterLandscape = false;
   pendingNewGameAfterLandscape = false;
+  pendingResumeAfterLandscape = false;
   isGameScreenActive = false;
   state.running = false;
   stopMusic();
@@ -1415,9 +1681,27 @@ async function showSetupScreen() {
 async function startGameFromSetup() {
   unlockAudioFromGesture();
   setInstallHint("");
+  clearSavedRun();   // 按「開始遊玩」就是要開新局,舊存檔當場作廢免得之後誤接
   showGameScreen();
   await requestLandscapeFullscreen();
   pendingNewGameAfterLandscape = true;
+  updateOrientationPrompt();
+}
+
+async function resumeSavedRun() {
+  const saved = loadSavedRun();
+  if (!saved) {
+    updateResumeButton();
+    setInstallHint("找不到可以接續的存檔，請按「開始遊玩」開新的一局。");
+    return;
+  }
+
+  unlockAudioFromGesture();
+  setInstallHint("");
+  restoreRun(saved);
+  showGameScreen();
+  await requestLandscapeFullscreen();
+  pendingResumeAfterLandscape = true;
   updateOrientationPrompt();
 }
 
@@ -2024,6 +2308,7 @@ function loseLife() {
     if (typeof window !== "undefined" && window.psDone) {
       window.psDone();
     }
+    clearSavedRun();   // 這局已經結束,存檔留著只會讓人接到一個死局
     return;
   }
 
@@ -2031,6 +2316,7 @@ function loseLife() {
   stopMusic();
   const assisted = applyAssistIfStruggling();
   resetBallsOnPaddle();
+  saveRun();
   setOverlay("失去一命", assisted
     ? `這關卡關了，已自動把板子加寬幫你一把。剩餘生命：${state.lives}。`
     : `剩餘生命：${state.lives}。按空白鍵或開始遊戲繼續。`, {
@@ -2077,6 +2363,7 @@ function nextLevel() {
   updateHud();
   beginLevelCountdown(getLevelTitle());
   syncButton();
+  saveRun();   // 過關是最自然的檢查點
 }
 
 function syncStuckBallsWithPaddle() {
@@ -3683,6 +3970,17 @@ quickRestartBtn.addEventListener("click", () => {
 settingsBtn.addEventListener("click", openSettingsMenu);
 versionBtn.addEventListener("click", openVersionPanel);
 shareDailyBtn.addEventListener("click", shareDailyChallenge);
+resumeRunBtn.addEventListener("click", resumeSavedRun);
+
+// 離開分頁就存。★ 手機主要靠 pagehide/visibilitychange —— 使用者不會乖乖按「回設定」,
+//    而是直接切 App 或鎖屏,那時 beforeunload 在 iOS 上根本不保證會觸發。
+addEventListener("pagehide", saveRun);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    saveRun();
+  }
+});
+
 backToSetupBtn.addEventListener("click", showSetupScreen);
 backToSetupOverlayBtn.addEventListener("click", showSetupScreen);
 
@@ -3814,5 +4112,6 @@ migrateTopScores();
 restartGame({ countGame: false, showStartOverlay: false });
 renderAchievements();
 renderTopScores();
+updateResumeButton();
 updateInstallButton();
 requestAnimationFrame(gameLoop);
