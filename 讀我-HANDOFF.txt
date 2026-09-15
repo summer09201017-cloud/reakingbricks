@@ -1,0 +1,126 @@
+打磚塊 Breakout — 交接文件
+================================================================================
+給另一台 PC 的 AI：這份是純文字，讀完就能接手。四份文件的分工是
+  讀我-HANDOFF.txt（本檔）= 現在到哪、怎麼跑、下一步
+  CLAUDE.md              = 維護地雷與協作規則（動程式前必讀）
+  README.md              = 給玩家/老師看的玩法與操作
+  roadmap.md             = 待做清單與「刻意不做」的理由
+
+
+★★★★★ 2026-09-15（v2.2.0 / sw v20）
+--------------------------------------------------------------------------------
+這一輪把一個「功能很多但沒人玩」的打磚塊，從 v1.5.0 推到 v2.2.0，十一項改動。
+
+■① 先找到真正的病根：每一次部署都推給了沒人看的那一份
+
+  統計顯示總開啟 25 次、近 7 天 0 次。查下去發現：
+  作品集 hfpc-portfolio 的卡片連的是 bricksbreaking.pages.dev（Cloudflare），
+  而這個 repo 一直只推 Netlify ⇒ CF 那份停在 v11、落後兩個 commit，
+  還帶著 0914 才修掉的「裝成 App 開啟 ERR_FAILED」。
+
+  使用者 0915 拍板「兩份都更新」。現在的狀況是：
+    https://bricksbreaking.netlify.app   git push 自動部署    sites.json 登記的是這份
+    https://bricksbreaking.pages.dev     手動 wrangler 部署   作品集卡片連的是這份
+  ⇒ 改完程式要推「兩個」平台，步驟寫在 CLAUDE.md 的部署段。
+  ⇒ 已把 pages.dev 加進 ~/.claude/gamefleet/sites.json 的「街機合輯」，
+     以後 deploy-drift-scan 抓得到它。
+
+  ⚠ wrangler 的地雷（花了四次失敗才找到）：
+    在「本 repo 目錄裡」跑 `wrangler pages deploy` 會印完橫幅就無聲崩潰
+    （bash exit 127 / PowerShell exit 9，沒有任何錯誤訊息，前面 CF API 全回 200）。
+    要先 Push-Location 到一個「非 git 目錄」再跑，部署目錄給絕對路徑。
+    完整指令在 CLAUDE.md。
+
+■② 統計：三層 beacon 補齊了
+
+  原本只鋪了「開啟」與「停留」兩層，沒有 `-done` 完賽打點。
+  已補上艦隊慣例的 window.psDone()，在 loseLife() 生命歸零處呼叫。
+
+  另外查證了一件事：**-dwell 的程式碼沒有壞**。線上實測 `-dwell&t=6` 正常送出，
+  同款程式碼的 dianzhu-tai 停留 1:42 也正常入帳。那 25 次開啟真的沒有任何一次
+  停留滿 3 秒（8/15~8/20 集中爆發後完全歸零，是爬蟲/預覽流量的形狀）。
+  ⇒ 這也正是補 -done 的價值：-dwell 靠 pagehide，無頭爬蟲被 kill 時根本不會送，
+    分不出「沒人玩」和「beacon 掉了」；-done 由遊戲內事件觸發，沒有這個盲區。
+
+■③ 這一輪做了什麼（依 commit 順序）
+
+  v1.6.0  關卡圖案佈局（10 張手設計 ASCII 圖案）+ -done 打點
+          + 修掉 getBrickColor() 寫死紅色（hp≥3 一律 #f94144，第 5 關起四個主題全失效）
+  v1.6.1  版本資訊帶日期（CHANGELOG 改 { date, items }）
+  v1.7.0  卡關輔助 + 打擊感（震屏/頓幀 + prefers-reduced-motion）
+  v1.8.0  本機排行榜 Top 10
+  v1.9.0  Boss 反擊（落石 + 紅色預告線）
+  v2.0.0  磚塊定時下壓 + 危險線
+  v2.1.0  續玩存檔
+  v2.2.0  關卡編輯器 + 分享碼
+
+■④ 三個「差點做錯、值得記住」的設計判斷
+
+  ㈠ 震屏一度用 random() —— 那是每日挑戰的 seeded RNG。畫面每多震一幀就偷走
+     一個亂數，同一天同一關的磚塊配置會跟著「震了幾幀」而變。
+     ⇒ 純視覺的隨機一律用 Math.random()。已寫測試把這條釘死。
+  ㈡ 卡關輔助的觸發原本規劃「連死 3 次」，但標準難度只有 3 條命 ——
+     第 3 次失誤就是 Game Over，設 3 等於永遠來不及出手。改成 2 次。
+  ㈢ 磚塊下壓撞線若直接 Game Over，復活後磚塊還壓在線上 ⇒ 復活即死、一次吃光
+     所有命。改成扣一命並把磚塊往回推三格。
+     ⇒ 通則：會扣命的環境傷害一定要附「推回去」的補償。
+
+■⑤ 測試現況
+
+  repo 內（零相依，node 直接跑）：
+    node --check game.js && node --check sw.js
+    node test/patterns.mjs     關卡圖案：列寬/圖例/整張空/幾何出界（12 項）
+    node test/sharecode.mjs    分享碼格式契約：樣本碼逐字釘死 + 隨機往返（8 項）
+  兩支都做過變異驗證（故意改壞會變紅）。
+
+  ⚠ Playwright 的驗收腳本（assist / juice / top / boss / descend / resume / editor，
+     合計約 150 項）**只活在這一輪的 scratchpad，沒有進 repo**。
+     換機就沒了。roadmap 待做第 4 項就是把它們接成 repo 內的 game-smoke-test。
+     Playwright 本身也不是這個 repo 的依賴，當時是借用
+     Desktop/hfpc-sparks-hub/node_modules/playwright 跑的。
+
+■⑥ 本機地雷
+
+  · 這個 repo 的路徑含中文（codex打磚塊），部分工具在這個 cwd 下會出怪事（見 ■①）。
+  · 要測 PWA / Service Worker 必須用 HTTP：python -m http.server 8080
+    直接開 index.html 只能玩，裝不了 App。
+  · .wrangler/ 已進 .gitignore（netlify.toml 的 publish 是 "."，不排除會外洩本機狀態）。
+  · 改了殼層（index.html / game.js / styles.css）就要 bump sw.js 的 CACHE_NAME，
+    否則已安裝 PWA 的使用者卡在舊殼層。
+
+■⑦ 下一步（roadmap.md 第一列）
+
+  【每日挑戰分享圖卡】⏱ ~1.5h ★★★
+  目前分享只有純文字。做成圖卡（第幾關／幾分／幾顆球），配合既有 seed 的
+  「全世界今天同一局」，是 Wordle 式回訪的標準解。
+  對應 skill：daily-puzzle-kit / share-card
+
+■⑧ 等使用者拍板、不要自行開工
+
+  【耶利哥城牆主題關卡包】（約書亞記 6 章）
+  打磚塊 = 把城牆打倒，是天然的聖經題材。工程量不大，但它會改變這個站的定位
+  （純街機 → 可進聖經遊戲大廳的教材）。2026-09-15 提出，使用者當日未回覆。
+
+■⑨ 接手時怎麼驗「現在到底是哪一版」
+
+  本機：   grep CACHE_NAME sw.js ； grep 'APP_VERSION =' game.js
+  線上：   curl -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | grep CACHE_NAME
+           curl -s "https://bricksbreaking.pages.dev/sw.js?b=1"     | grep CACHE_NAME
+  ⚠ /index.html 在 CF Pages 是 308 轉到 /，curl 要加 -L，否則 body 是空的，
+    grep 出來會像「檔案沒上去」（這一輪誤判過一次）。
+  三邊都應該是 breakout-pwa-v20 / 2.2.0。
+
+  git：    git status --short      （應為空）
+           git log --oneline -1    （應為 e65a556）
+           git rev-list --count @{u}..HEAD   （應為 0）
+
+
+================================================================================
+專案基本資料
+--------------------------------------------------------------------------------
+GitHub      https://github.com/summer09201017-cloud/reakingbricks.git
+線上        https://bricksbreaking.netlify.app  （push 自動部署）
+            https://bricksbreaking.pages.dev    （手動 wrangler，作品集連這份）
+技術        純靜態、零依賴、零建置。HTML + CSS + 單檔 game.js + sw.js
+規模        game.js 4507 行 / styles.css 1060 / index.html 352 / sw.js 61
+統計        https://hfpc-play-stats.summer09201017.workers.dev/stats  （id: bricksbreaking）

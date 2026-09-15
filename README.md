@@ -79,6 +79,8 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 ├── icons/                  # PWA 圖示
 ├── test/patterns.mjs       # 關卡圖案自我檢查(零相依)
 ├── test/sharecode.mjs      # 分享碼格式契約檢查(零相依)
+├── roadmap.md              # 待做清單與刻意不做的理由
+├── 讀我-HANDOFF.txt        # 換機接手用的交接文件
 ├── CLAUDE.md               # AI 協作者維護指南
 └── README.md
 ```

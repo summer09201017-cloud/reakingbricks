@@ -20,6 +20,20 @@
 - 寶物系統，每種寶物整場最多掉落 2 次
 - 特殊磚塊：爆破磚、鋼鐵磚、移動磚
 - 每一關使用不同的手繪圖案佈局，每四關穿插 Boss 關
+- Boss 會往下砸落石（有紅色預告線）；標準與挑戰難度的磚塊會定時下移
+- 卡關輔助、打擊感（震屏／頓幀，尊重 prefers-reduced-motion）
+- 本機排行榜 Top 10、續玩存檔、關卡編輯器與分享碼
+
+## 現況（2026-09-15）
+
+**v2.2.0 / sw v20**，三邊一致（本機 = netlify.app = pages.dev）。
+工作區乾淨、已 push，HEAD = `e65a556`。
+
+- ✅ 已完成的十一項改動與待做清單看 `roadmap.md`
+- ✅ 接手要看的「怎麼跑、有什麼地雷、下一步」看 `讀我-HANDOFF.txt`
+- 📋 **等使用者拍板、不要自行開工**：耶利哥城牆主題關卡包（會改變本站定位，理由寫在 roadmap）
+- ⚠ Playwright 驗收腳本（約 150 項）**沒有進 repo**，只活在當時的 scratchpad；
+  repo 內只有兩支零相依測試（`test/patterns.mjs`、`test/sharecode.mjs`）
 
 ## 回應與協作規則
 
@@ -39,6 +53,10 @@
 - `manifest.webmanifest`：PWA 名稱、顏色與圖示設定。
 - `netlify.toml`：Netlify 靜態部署與快取標頭。
 - `icons/`：PWA 圖示。
+- `test/patterns.mjs`：關卡圖案自我檢查（零相依）。
+- `test/sharecode.mjs`：分享碼格式契約檢查（零相依）。
+- `roadmap.md`：待做清單與「刻意不做」的理由。
+- `讀我-HANDOFF.txt`：給另一台機接手用的交接文件。
 
 ## 本機執行
 
