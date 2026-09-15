@@ -80,10 +80,41 @@ Get-Content manifest.webmanifest -Raw | ConvertFrom-Json | Select-Object -Expand
 https://github.com/summer09201017-cloud/reakingbricks.git
 ```
 
-Netlify 設定已在 `netlify.toml`。部署時：
+### ⚠ 這個站有「兩份」線上副本，兩份都要推（0915 使用者拍板）
 
-- Build command 留空
-- Publish directory 使用 `.`
+| 網址 | 平台 | 誰在用 | 怎麼上線 |
+| --- | --- | --- | --- |
+| `https://bricksbreaking.netlify.app` | Netlify | `sites.json`、艦隊掃描 | `git push` 自動部署 |
+| `https://bricksbreaking.pages.dev` | Cloudflare Pages | **作品集 `hfpc-portfolio` 的卡片** | 手動 `wrangler pages deploy` |
+
+0915 發現：作品集的卡片一直連 `pages.dev`，而這個 repo 只推 Netlify，
+所以 CF 那份停在 v11（還帶著 0914 才修掉的「裝成 App 開啟 ERR_FAILED」地雷）
+整整落後兩個 commit。**只推 Netlify 等於改給沒人看的那一份。**
+
+Netlify 設定已在 `netlify.toml`（Build command 留空、Publish directory 用 `.`）。
+Cloudflare Pages 那份要手動推：
+
+```powershell
+# ★ 必須「先切到非 git 目錄」再跑，不可以在本 repo 目錄裡直接部署。
+#   wrangler 4.114 會去讀本 repo 的 git 資訊，遇到含 emoji 的多行 commit message
+#   會在「開始上傳檔案」那一刻無聲崩潰（bash exit 127 / PowerShell exit 9，
+#   只印橫幅、沒有任何錯誤訊息，而且前面的 CF API 都回 200，非常難判讀）。
+# ★ 部署目錄只放要上線的 8 個檔，不要整包根目錄（避免 .git / .wrangler 外洩）。
+$dist = "$env:TEMPricks-dist"
+New-Item -ItemType Directory -Force $dist | Out-Null
+Copy-Item index.html,game.js,styles.css,sw.js,manifest.webmanifest $dist
+Copy-Item -Recurse -Force icons $dist
+Push-Location $env:TEMP
+npx wrangler pages deploy $dist --project-name bricksbreaking --branch main
+Pop-Location
+```
+
+驗線上（`?b=` 破 CDN 快取；`/index.html` 會 308 轉到 `/`，用 `curl -L`）：
+
+```powershell
+curl.exe -s "https://bricksbreaking.pages.dev/sw.js?b=1"     | Select-String CACHE_NAME
+curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CACHE_NAME
+```
 
 ## 維護提醒
 
