@@ -114,10 +114,14 @@ Netlify 設定已在 `netlify.toml`（Build command 留空、Publish directory �
 Cloudflare Pages 那份要手動推：
 
 ```powershell
-# ★ 必須「先切到非 git 目錄」再跑，不可以在本 repo 目錄裡直接部署。
-#   wrangler 4.114 會去讀本 repo 的 git 資訊，遇到含 emoji 的多行 commit message
-#   會在「開始上傳檔案」那一刻無聲崩潰（bash exit 127 / PowerShell exit 9，
-#   只印橫幅、沒有任何錯誤訊息，而且前面的 CF API 都回 200，非常難判讀）。
+# ★ 必須「先切到純 ASCII 路徑」再跑，不可以在本 repo 目錄裡直接部署。
+#   觸發條件是 **cwd 路徑含非 ASCII 字元**（本 repo 是 codex打磚塊，正好踩中），
+#   跟「是不是 git repo」「commit message 長什麼樣」都無關（0915 三組對照實驗實測）。
+#   崩起來完全沒有訊息：只印橫幅，bash 給 exit 127、PowerShell 給 -1073740791
+#   = 0xC0000409 STATUS_STACK_BUFFER_OVERRUN（原生層硬崩，try/catch 接不到），
+#   而 WRANGLER_LOG=debug 顯示前面的 CF API 全回 200 ⇒ 非常難判讀。
+#   ⚠ 「中文路徑但非 git」那組會「部署成功卻回崩潰碼」⇒ 別只看退出碼判成敗，
+#     要看 `wrangler pages deployment list` 或線上指紋。
 # ★ 部署目錄只放要上線的 8 個檔，不要整包根目錄（避免 .git / .wrangler 外洩）。
 $dist = "$env:TEMPricks-dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
