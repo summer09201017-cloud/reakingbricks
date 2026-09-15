@@ -29,6 +29,7 @@ const songSelectInGame = document.getElementById("songSelectInGame");
 const musicToggle = document.getElementById("musicToggle");
 const sfxToggle = document.getElementById("sfxToggle");
 const hapticsToggle = document.getElementById("hapticsToggle");
+const assistToggle = document.getElementById("assistToggle");
 const musicVolume = document.getElementById("musicVolume");
 const sfxVolume = document.getElementById("sfxVolume");
 const musicVolumeValue = document.getElementById("musicVolumeValue");
@@ -36,6 +37,7 @@ const sfxVolumeValue = document.getElementById("sfxVolumeValue");
 const setupMusicToggle = document.getElementById("setupMusicToggle");
 const setupSfxToggle = document.getElementById("setupSfxToggle");
 const setupHapticsToggle = document.getElementById("setupHapticsToggle");
+const setupAssistToggle = document.getElementById("setupAssistToggle");
 const setupMusicVolume = document.getElementById("setupMusicVolume");
 const setupSfxVolume = document.getElementById("setupSfxVolume");
 const setupMusicVolumeValue = document.getElementById("setupMusicVolumeValue");
@@ -62,11 +64,14 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.6.1";
+const APP_VERSION = "1.7.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-15", items: [
+    "新增卡關輔助：同一關失誤兩次後自動加寬板子，過關後收回，可在設定關閉",
+    "強化打擊感：擊碎磚塊、連擊、爆破與失誤會震動畫面並短暫頓格",
+    "尊重系統的「減少動態」設定，開啟時完全不震動畫面",
     "每一關改成手繪圖案佈局：城牆、金字塔、拱門、十字、沙漏、棋盤、堡壘、愛心、雙塔、箭頭",
     "關卡倒數會顯示本關圖案名稱",
     "磚塊耐打度改用主題色深淺表示，高關卡不再整片同色",
@@ -129,6 +134,48 @@ const SHIELD_MAX_CHARGES = 3;
 const BOMB_BALL_MAX_CHARGES = 3;
 const AUTO_FIRE_INTERVAL = 0.32;
 const BOSS_INTERVAL = 4;
+// 🛟 手殘救援(0915):同一關連續失誤就自動加寬板子,給孩子用。
+//    ★ 觸發設 2 而不是 3:標準難度只有 3 條命,第 3 次失誤就是 Game Over,
+//      設 3 等於永遠來不及出手;設 2 在休閒/標準/挑戰三種難度都還救得到。
+const ASSIST_DEATHS_TRIGGER = 2;
+const ASSIST_PADDLE_BONUS = 30;
+const ASSIST_MAX_STACKS = 3;
+// 💥 打擊感(0915):震屏 + 頓幀。打磚塊的命脈是「打到東西的手感」,原本偏軟。
+//    ★ 一律尊重 prefers-reduced-motion:這個系統設定就是給前庭敏感/暈動症的人用的,
+//      震屏正是最會誘發不適的那一類效果。開了就完全不震(值歸零,不是減弱)。
+const SHAKE_DECAY = 7.5;          // 每秒衰減倍率
+const SHAKE_MAX = 9;              // 位移上限(px),再大就從「有力」變成「看不清」
+const HITSTOP_MAX = 0.085;        // 頓幀上限(秒)
+const reduceMotionQuery = typeof window.matchMedia === "function"
+  ? window.matchMedia("(prefers-reduced-motion: reduce)")
+  : null;
+let prefersReducedMotion = reduceMotionQuery ? reduceMotionQuery.matches : false;
+if (reduceMotionQuery) {
+  const onReduceMotionChange = (event) => {
+    prefersReducedMotion = event.matches;
+    if (prefersReducedMotion) {
+      state.shake = 0;
+      state.hitStop = 0;
+    }
+  };
+  // Safari 14 以前只有 addListener,沒有 addEventListener
+  if (typeof reduceMotionQuery.addEventListener === "function") {
+    reduceMotionQuery.addEventListener("change", onReduceMotionChange);
+  } else if (typeof reduceMotionQuery.addListener === "function") {
+    reduceMotionQuery.addListener(onReduceMotionChange);
+  }
+}
+
+// 加一次震動與頓幀。strength 是「這一下有多重」(0~1 之間的相對值)。
+function addImpact(strength, stopSec = 0) {
+  if (prefersReducedMotion) {
+    return;
+  }
+  state.shake = Math.min(SHAKE_MAX, state.shake + strength);
+  if (stopSec > 0) {
+    state.hitStop = Math.min(HITSTOP_MAX, state.hitStop + stopSec);
+  }
+}
 const STORAGE_KEYS = {
   preferences: "breakout.preferences.v2",
   records: "breakout.records.v2",
@@ -333,6 +380,7 @@ const defaultPreferences = {
   music: true,
   sfx: true,
   haptics: true,
+  assist: true,
   musicVolume: 100,
   sfxVolume: 100,
   song: "arcade",
@@ -374,6 +422,10 @@ const state = {
   comboTimer: 0,
   restartCountdown: 0,
   levelName: "",
+  assistStacks: 0,
+  assistWidthBonus: 0,
+  shake: 0,
+  hitStop: 0,
   mode: preferences.mode in MODES ? preferences.mode : "classic",
   difficulty: preferences.difficulty in DIFFICULTIES ? preferences.difficulty : "normal",
   theme: preferences.theme in THEMES ? preferences.theme : "classic",
@@ -545,6 +597,7 @@ function createSessionStats() {
     levelsCleared: 0,
     highestLevel: 1,
     levelLivesLost: 0,
+    assistUsed: false,
     powerupCounts: createPowerupCounter(),
   };
 }
@@ -993,6 +1046,7 @@ function getOverlayStatItems() {
     ["最大 Combo", sessionStats.maxCombo],
     ["Combo 加分", sessionStats.totalComboBonus],
     ["射擊命中", getAccuracyText()],
+    ...(sessionStats.assistUsed ? [["輔助", "本局用過"]] : []),
   ];
 }
 
@@ -1271,6 +1325,8 @@ function syncSettingsControls() {
   setupMusicToggle.checked = preferences.music;
   setupSfxToggle.checked = preferences.sfx;
   setupHapticsToggle.checked = preferences.haptics;
+  assistToggle.checked = preferences.assist;
+  setupAssistToggle.checked = preferences.assist;
   musicVolume.value = String(preferences.musicVolume);
   sfxVolume.value = String(preferences.sfxVolume);
   setupMusicVolume.value = String(preferences.musicVolume);
@@ -1682,6 +1738,8 @@ function restartGame(options = {}) {
   state.level = 1;
   state.combo = 0;
   state.comboTimer = 0;
+  state.assistStacks = 0;
+  state.assistWidthBonus = 0;
   sessionStats = createSessionStats();
   sessionStats.highestLevel = 1;
   powerupSpawnCounts = createPowerupCounter();
@@ -1767,6 +1825,33 @@ function pauseGame(showSettings = true) {
   syncButton();
 }
 
+// 同一關失誤達門檻就出手:加寬板子。回傳是否真的出手(用來決定提示文字)。
+function applyAssistIfStruggling() {
+  if (!preferences.assist) {
+    return false;
+  }
+  if (sessionStats.levelLivesLost < ASSIST_DEATHS_TRIGGER) {
+    return false;
+  }
+  if (state.assistStacks >= ASSIST_MAX_STACKS) {
+    return false;
+  }
+  // 上限沿用 expand 寶物的 260,避免板子寬到整個畫面
+  const widened = clamp(paddle.width + ASSIST_PADDLE_BONUS, 100, 260);
+  if (widened === paddle.width) {
+    return false;
+  }
+  // 記「實際加了多少」而不是 ASSIST_PADDLE_BONUS —— 撞到 260 上限時兩者不同,
+  // 用常數扣回去會把玩家自己吃到的 expand 寶物一起扣掉。
+  state.assistWidthBonus += widened - paddle.width;
+  paddle.width = widened;
+  paddle.x = clamp(paddle.x, 0, canvas.width - paddle.width);
+  state.assistStacks += 1;
+  sessionStats.assistUsed = true;
+  spawnFloatingText("已開啟輔助：板子加寬", canvas.width * 0.5, paddle.y - 34, "#7ae582");
+  return true;
+}
+
 function loseLife() {
   state.lives -= 1;
   sessionStats.livesLost += 1;
@@ -1777,6 +1862,7 @@ function loseLife() {
   powerups = [];
   bullets = [];
   updateHud();
+  addImpact(7, 0.08);
   vibrate([80, 40, 80]);
 
   if (state.lives <= 0) {
@@ -1800,8 +1886,11 @@ function loseLife() {
 
   state.running = false;
   stopMusic();
+  const assisted = applyAssistIfStruggling();
   resetBallsOnPaddle();
-  setOverlay("失去一命", `剩餘生命：${state.lives}。按空白鍵或開始遊戲繼續。`, {
+  setOverlay("失去一命", assisted
+    ? `這關卡關了，已自動把板子加寬幫你一把。剩餘生命：${state.lives}。`
+    : `剩餘生命：${state.lives}。按空白鍵或開始遊戲繼續。`, {
     showActions: true,
     showSettings: false,
     stats: getOverlayStatItems(),
@@ -1819,6 +1908,12 @@ function nextLevel() {
 
   sessionStats.levelsCleared += 1;
   sessionStats.levelLivesLost = 0;
+  // 輔助只針對「卡住的那一關」：過關就把加寬收回，否則整局會愈玩愈簡單、分數也失去意義。
+  // 只扣自己加的那一段，玩家吃到的 expand 寶物原封不動保留。
+  paddle.width = clamp(paddle.width - state.assistWidthBonus, 100, 260);
+  paddle.x = clamp(paddle.x, 0, canvas.width - paddle.width);
+  state.assistWidthBonus = 0;
+  state.assistStacks = 0;
   state.combo = 0;
   state.comboTimer = 0;
   state.level += 1;
@@ -2245,6 +2340,8 @@ function destroyBrick(brick, options = {}) {
 
   brick.alive = false;
   sessionStats.bricksDestroyed += 1;
+  // 連鎖爆破一次會打掉一整片,每顆都震會變成無法辨識的抖動 ⇒ 爆破來的只給極小值
+  addImpact(options.fromExplosion ? 0.35 : 1.1, options.fromExplosion ? 0 : 0.012);
   if (!options.fromExplosion) {
     spawnPowerup(brick);
   }
@@ -2262,6 +2359,7 @@ function destroyBrick(brick, options = {}) {
     spawnFloatingText("加速", brick.x + brick.width * 0.5, brick.y, "#ffb86b");
   }
   if (brick.special === "boss") {
+    addImpact(6, 0.075);
     addScore(150);
     spawnFloatingText("BOSS CLEAR +150", brick.x + brick.width * 0.5, brick.y, "#ffe680");
     vibrate([45, 40, 45]);
@@ -2279,6 +2377,7 @@ function registerCombo(options = {}) {
 
   const bonus = state.combo >= 3 ? Math.min(40, Math.floor(state.combo / 3) * 3) : 0;
   if (bonus > 0) {
+    addImpact(Math.min(3.2, 0.9 + state.combo * 0.12), Math.min(0.05, state.combo * 0.003));
     sessionStats.totalComboBonus += bonus;
     spawnFloatingText(`Combo x${state.combo} +${bonus}`, canvas.width * 0.5, canvas.height - 78, "#ffe680");
   }
@@ -2308,6 +2407,7 @@ function damageBrick(brick, options = {}) {
 }
 
 function explodeBrick(source) {
+  addImpact(4.5, 0.05);
   spawnFloatingText("爆破", source.x + source.width * 0.5, source.y, "#ffb4a8");
   vibrate([25, 25, 25]);
   for (let i = 0; i < bricks.length; i += 1) {
@@ -2889,6 +2989,16 @@ function drawStatus() {
 }
 
 function render() {
+  // 震屏:位移整個畫面。刻意不動 HUD(那是 DOM),只有 canvas 會晃。
+  const shaking = state.shake > 0.05;
+  if (shaking) {
+    const amp = Math.min(SHAKE_MAX, state.shake);
+    ctx.save();
+    // ★ 這裡必須用 Math.random() 不是 random():random() 是每日挑戰的 seeded RNG,
+    //   在 render 裡抽會讓「畫面震了幾幀」影響到磚塊配置,同一天同一關就不再一致。
+    ctx.translate((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp * 0.75);
+  }
+
   drawBackground();
   drawBricks();
   drawPowerups();
@@ -2897,6 +3007,10 @@ function render() {
   drawPaddle();
   drawBalls();
   drawFloatingTexts();
+  if (shaking) {
+    ctx.restore();
+  }
+  // 狀態字最後畫、且在震屏之外:讀數值的東西晃起來只會看不清楚
   drawStatus();
 }
 
@@ -2909,7 +3023,17 @@ function gameLoop(ts) {
 
   updatePaddle(step);
 
-  if (state.running) {
+  // 頓幀(hit-stop):打到重物時凍結「世界」幾十毫秒,畫面照樣重繪。
+  // ★ 只擋世界更新、不擋 requestAnimationFrame —— 真的停掉迴圈會讓輸入也卡住。
+  if (state.hitStop > 0) {
+    state.hitStop = Math.max(0, state.hitStop - deltaSec);
+  }
+  // 震屏衰減:用 deltaSec 而非 step,低幀率裝置才不會晃得比較久
+  if (state.shake > 0) {
+    state.shake = Math.max(0, state.shake - state.shake * SHAKE_DECAY * deltaSec - 0.02);
+  }
+
+  if (state.running && state.hitStop <= 0) {
     const worldStep = step * (state.timeSlowTimer > 0 ? 0.62 : 1);
     updateBricks(worldStep);
     updateBalls(worldStep);
@@ -3210,6 +3334,8 @@ hapticsToggle.addEventListener("change", () => updatePreference("haptics", hapti
 setupMusicToggle.addEventListener("change", () => updatePreference("music", setupMusicToggle.checked));
 setupSfxToggle.addEventListener("change", () => updatePreference("sfx", setupSfxToggle.checked));
 setupHapticsToggle.addEventListener("change", () => updatePreference("haptics", setupHapticsToggle.checked));
+assistToggle.addEventListener("change", () => updatePreference("assist", assistToggle.checked));
+setupAssistToggle.addEventListener("change", () => updatePreference("assist", setupAssistToggle.checked));
 musicVolume.addEventListener("input", () => updateVolumePreference("musicVolume", musicVolume.value));
 sfxVolume.addEventListener("input", () => updateVolumePreference("sfxVolume", sfxVolume.value));
 setupMusicVolume.addEventListener("input", () => updateVolumePreference("musicVolume", setupMusicVolume.value));

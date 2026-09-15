@@ -191,6 +191,16 @@ p {
   gap: 10px;
 }
 
+/* 開關底下的一行說明（例如「卡關輔助」在做什麼）。
+   刻意寫成看得見的文字，不用 title= —— tooltip 在手機上等於隱形。 */
+.setup-note {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
 .volume-settings {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
