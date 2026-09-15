@@ -114,7 +114,11 @@ Netlify 設定已在 `netlify.toml`（Build command 留空、Publish directory �
 Cloudflare Pages 那份要手動推：
 
 ```powershell
-# ★ 必須「先切到純 ASCII 路徑」再跑，不可以在本 repo 目錄裡直接部署。
+# ★ 必須「先切到一個純 ASCII 的『空』目錄」再跑，不可以在本 repo 目錄裡直接部署。
+#   ─ 純 ASCII：擋掉下面那顆記憶體毀損崩潰
+#   ─ 空目錄（不是 assets 夾本身）：擋掉另一顆 —— cwd 就是 assets 夾時，wrangler 會把
+#     自己的 .wrangler/cache/wrangler-account.json（含 Cloudflare 帳號 id）寫進去，
+#     並當成靜態資產一起公開（股票管家 0730 實測線上回 200）。
 #   觸發條件是 **cwd 路徑含非 ASCII 字元**（本 repo 是 codex打磚塊，正好踩中），
 #   跟「是不是 git repo」「commit message 長什麼樣」都無關（0915 兩輪對照實驗實測）。
 #   `pages deploy` 與 Workers 的 `wrangler deploy` 兩種模式都中，連 --dry-run 也崩；

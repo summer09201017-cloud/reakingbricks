@@ -49,7 +49,9 @@
       deployment list 也確認沒有新部署），但別的中文目錄會做完才死。
       ⇒ 不要預測會是哪一種，非 ASCII cwd 一律當成不能用。
 
-    ⇒ 修法：Push-Location 到任何純 ASCII 路徑（$env:TEMP 即可，是不是 git 無所謂），
+    ⇒ 修法：Push-Location 到一個**純 ASCII 的「空」目錄**（$env:TEMP 即可）。
+      「空目錄」不是多寫的：cwd 若就是 assets 夾，wrangler 會把含 Cloudflare 帳號 id 的
+      .wrangler/cache/wrangler-account.json 寫進去並當成靜態資產公開（另一顆雷）。
       部署目錄給絕對路徑。完整指令在 CLAUDE.md。
     ⚠ 「中文路徑 + 非 git」那組最陰：部署其實成功了但退出碼是崩潰碼 ⇒
       用 $LASTEXITCODE 或 && 串接的腳本會判成失敗。CF Pages 的結果要看
