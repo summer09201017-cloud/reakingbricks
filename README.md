@@ -19,6 +19,7 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 - 本機排行榜 Top 10，記錄分數、關卡、難度、模式與日期；結算會顯示名次或還差幾分進榜
 - 續玩存檔：離開遊戲或關掉分頁時自動保存整個場面（磚塊、球、寶物、道具時間），回到設定頁可按「繼續上一局」接著玩；存檔保留三天，遊戲結束或開新局時自動清除
 - 支援經典模式與每日挑戰模式
+- 遊戲畫面有 ⛶ 手動全螢幕鈕（只在瀏覽器真的支援 Fullscreen API 時顯示）
 - 關卡編輯器：用 10 欄 × 3～8 列的格子自己畫一關（一般磚／鋼鐵磚／爆破磚／移動磚），產生一串分享碼傳給別人，對方貼上就能玩同一張關卡；自訂關卡是一關定勝負，分數不列入排行榜與最高分（每張圖難度差異太大）
 - 每一關使用不同的手繪圖案佈局：城牆、金字塔、拱門、十字、沙漏、棋盤、堡壘、愛心、雙塔、箭頭，每四關穿插一次 Boss 關
 - 關卡倒數會顯示本關的圖案名稱
@@ -37,7 +38,7 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 - 穿透球可打穿磚塊，炸彈球下一次撞磚會範圍爆破，慢動作會放慢場上物件
 - 支援背景音樂曲目切換，包含快樂頌、卡農律動與放鬆節拍
 - 遊戲畫面會顯示道具圖示與剩餘持續時間條
-- 每日挑戰結果可以分享或複製
+- 每日挑戰可以做成分享圖卡：一張 1080×1440 的 PNG，帶日期、題號、分數、評級、最高關、用掉球數、最大 Combo、破壞磚塊，以及那一關的磚塊圖案縮圖；可以直接分享、下載成 PNG，或只複製文字
 - 每種寶物整場最多掉落 2 次
 - 特殊磚塊包含爆破磚、鋼鐵磚、移動磚、分裂磚、加速磚、反彈磚與 Boss 大型磚
 - Boss 會往下砸落石，落下前會先出現紅色預告線，護盾可以擋下一次
@@ -79,6 +80,8 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 ├── icons/                  # PWA 圖示
 ├── test/patterns.mjs       # 關卡圖案自我檢查(零相依)
 ├── test/sharecode.mjs      # 分享碼格式契約檢查(零相依)
+├── test/sharecard.mjs      # 每日挑戰分享圖卡自我檢查(零相依,假 ctx)
+├── test/verify-browser.mjs # 真瀏覽器驗收(playwright-core + 系統 Edge/Chrome)
 ├── roadmap.md              # 待做清單與刻意不做的理由
 ├── 讀我-HANDOFF.txt        # 換機接手用的交接文件
 ├── CLAUDE.md               # AI 協作者維護指南
@@ -110,6 +113,16 @@ node --check game.js
 node --check sw.js
 node test/patterns.mjs
 node test/sharecode.mjs
+node test/sharecard.mjs
+```
+
+真瀏覽器驗收（改過 UI／圖卡之後跑，需要 `playwright-core` 與系統 Edge／Chrome）：
+
+```powershell
+python -m http.server 8931          # 另一個視窗
+node test/verify-browser.mjs
+$env:BASE="https://bricksbreaking.pages.dev"; node test/verify-browser.mjs   # 打線上
+$env:SHOT="1"; node test/verify-browser.mjs                                   # 順便存截圖
 ```
 
 `test/patterns.mjs` 會直接從 `game.js` 讀出關卡圖案，檢查每列寬度、圖例是否合法、
@@ -156,6 +169,7 @@ git push
 ## 維護提醒
 
 - 如果修改 `index.html`、`styles.css`、`game.js`、`manifest.webmanifest` 或圖示，建議同步更新 `sw.js` 的 `CACHE_NAME`，避免玩家卡在舊快取。
+- 分享圖卡上的日期、題號與分數必須是同一局的：成績存在 `records.dailyToday`，`key` 不是今天就視同沒挑戰過。不可以改回用歷來最高分 `bestDailyScore` 去配今天的日期。
 - `localStorage` 紀錄只存在同一個瀏覽器與裝置，清除網站資料後會消失。
 - `game.js` 已經偏大，下一階段若繼續擴充，建議拆分成多個模組。
 - 若要加入線上排行榜，可以考慮 Netlify Functions 加上外部資料庫。

@@ -36,6 +36,15 @@ const editorCopy = document.getElementById("editorCopy");
 const editorLoad = document.getElementById("editorLoad");
 const editorPlay = document.getElementById("editorPlay");
 const editorClose = document.getElementById("editorClose");
+const shareCardPanel = document.getElementById("shareCardPanel");
+const shareCardCanvas = document.getElementById("shareCardCanvas");
+const shareCardStatus = document.getElementById("shareCardStatus");
+const shareCardShareBtn = document.getElementById("shareCardShareBtn");
+const shareCardDownloadBtn = document.getElementById("shareCardDownloadBtn");
+const shareCardCopyBtn = document.getElementById("shareCardCopyBtn");
+const shareCardCloseBtn = document.getElementById("shareCardCloseBtn");
+const shareRunBtn = document.getElementById("shareRunBtn");
+const fullscreenBtn = document.getElementById("fullscreenBtn");
 const difficultySelect = document.getElementById("difficultySelect");
 const modeSelect = document.getElementById("modeSelect");
 const themeSelect = document.getElementById("themeSelect");
@@ -80,10 +89,17 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.3.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
+  { date: "2026-09-16", items: [
+    "每日挑戰可以做成分享圖卡：把日期、題號、分數、走到第幾關與那一關的磚塊圖案畫成一張 PNG，存檔或直接分享",
+    "圖卡與分享文字改印「今天」的成績，不再拿歷來每日最高分去配今天的日期",
+    "每日挑戰結算多一顆「成績圖卡」按鈕，打完就能直接做卡",
+    "遊戲畫面多一顆 ⛶ 手動全螢幕鈕：自動轉橫向被瀏覽器擋掉時，還有第二次機會",
+    "安裝成 APP 時鎖定橫向；遊戲中的按鈕加大到 44px，手機上比較不會點錯",
+  ] },
   { date: "2026-09-15", items: [
     "新增關卡編輯器：自己畫一張關卡，產生分享碼傳給別人，對方貼上就能玩",
     "新增續玩存檔：離開時自動保存整個場面，回來可按「繼續上一局」接著玩",
@@ -556,6 +572,9 @@ const defaultRecords = {
   bestScore: 0,
   bestLevel: 1,
   bestDailyScore: 0,
+  // 🖼 只留「今天」那一筆每日成績（0916）：分享圖卡要印日期，就不能拿歷來最高分去配今天的日期。
+  //    key 不是今天就視同沒挑戰過（跨日自動作廢），舊存檔沒有這個欄位也不會炸。
+  dailyToday: null,
   gamesPlayed: 0,
   achievements: [],
 };
@@ -629,6 +648,7 @@ let powerupSpawnCounts = createPowerupCounter();
 let sessionStats = createSessionStats();
 let seededRandom = Math.random;
 let dailyKey = getTodayKey();
+let shareCardData = null;   // 🖼 目前畫在分享圖卡上的那一包資料（下載／分享／複製文字共用同一份）
 
 let audioCtx = null;
 let musicGain = null;
@@ -1160,9 +1180,11 @@ function getScoreGapText() {
 }
 
 function getRunGrade() {
-  const score = state.score;
-  const level = sessionStats.highestLevel;
-  const combo = sessionStats.maxCombo;
+  return getGradeFor(state.score, sessionStats.highestLevel, sessionStats.maxCombo);
+}
+
+// 評級只有一份規則：結算面板與分享圖卡都走這裡，兩邊才不會給出不同的等第。
+function getGradeFor(score, level, combo) {
   if (score >= 1800 || level >= 6 || combo >= 24) {
     return ["S", "傳奇反彈"];
   }
@@ -1651,6 +1673,7 @@ function setOverlay(title, text, options = {}) {
     showActions = false,
     showSettings = false,
     showVersion = false,
+    showShare = false,
     stats = null,
   } = options;
 
@@ -1659,6 +1682,8 @@ function setOverlay(title, text, options = {}) {
   overlay.classList.remove("countdown");
   overlay.classList.toggle("hidden", !visible);
   overlayActions.hidden = !showActions;
+  // 🖼 成績圖卡只在「每日挑戰結算」出現：一般關卡沒有日期與題號，給了也沒有分享價值。
+  shareRunBtn.hidden = !(showActions && showShare);
   settingsMenu.hidden = !showSettings;
   versionPanel.hidden = !showVersion;
   if (showVersion) {
@@ -1752,6 +1777,43 @@ function updateOrientationPrompt() {
     resizeCanvasForScreen();
     beginLevelCountdown(getLevelTitle());
   }
+}
+
+// ⛶ 手動全螢幕(0916 手機體檢紅燈)。
+//
+// 原本只有「按開始遊玩時自動 requestFullscreen」這一條路 —— 而 iOS Safari 與
+// LINE / FB 之類的 App 內建瀏覽器常常靜默擋掉它(下面兩個 catch 就是在吞那件事),
+// 擋掉之後玩家**沒有第二次機會**,只能卡在小視窗裡玩。
+//
+// ★ 只在瀏覽器真的支援時才顯示這顆鈕:iPhone 上的 Safari 根本沒有 Fullscreen API,
+//   放一顆按了不會有反應的鈕比沒有更糟(dragtetris 也是同一條規矩)。
+function updateFullscreenButton() {
+  if (!fullscreenBtn) {
+    return;
+  }
+  const supported = document.fullscreenEnabled === true
+    && typeof document.documentElement.requestFullscreen === "function";
+  fullscreenBtn.hidden = !supported;
+  if (!supported) {
+    return;
+  }
+  const on = document.fullscreenElement != null;
+  fullscreenBtn.textContent = on ? "⛶ 離開" : "⛶";
+  fullscreenBtn.title = on ? "離開全螢幕" : "全螢幕";
+  fullscreenBtn.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+    await requestLandscapeFullscreen();
+  } catch {
+    // 使用者手勢之外呼叫、或被瀏覽器政策擋掉:靜默,不要弄壞遊戲。
+  }
+  updateFullscreenButton();
 }
 
 async function requestLandscapeFullscreen() {
@@ -2589,9 +2651,11 @@ function loseLife() {
         : gapToTop > 0
           ? `再多 ${gapToTop} 分就能擠進 Top 10。`
           : "";
+    recordDailyToday();   // 存「今天」這一筆，分享圖卡才印得出誠實的日期＋成績
     setOverlay("遊戲結束", `最終分數：${state.score}。最高分：${records.bestScore}。${rankText}`, {
       showActions: true,
       showSettings: true,
+      showShare: state.mode === "daily" && !state.customRows,
       stats: getOverlayStatItems(),
     });
     syncButton();
@@ -4061,37 +4125,366 @@ function openVersionPanel() {
   });
 }
 
-function getDailyShareText() {
-  const difficulty = getDifficultyConfig().label;
-  const score = state.mode === "daily" ? Math.max(state.score, records.bestDailyScore) : records.bestDailyScore;
-  const level = Math.max(records.bestLevel, sessionStats.highestLevel);
-  return [
-    `打磚塊每日挑戰 ${dailyKey}`,
-    `難度：${difficulty}`,
-    `分數：${score}`,
-    `最高關：${level}`,
-    `來挑戰：${window.location.href}`,
-  ].join("\n");
+// ── 🖼 每日挑戰分享圖卡（0916）────────────────────────────────────────────────
+// 為什麼要圖卡：純文字貼進 LINE 只是一行字，沒人會點。圖卡把「今天第幾關、幾分、
+// 用掉幾顆球」連同那一關的磚塊圖案一起畫出來，配上既有的「同一天同難度全世界同一局」
+// 種子，就是 Wordle 式回訪的標準解（skill：daily-puzzle-kit / share-card）。
+//
+// ★ 零相依：純 canvas + toDataURL，不裝庫、可離線、不打後端，維持本站的純靜態架構。
+// ★ drawShareCard() 只吃 ctx 與一包資料（不讀任何全域狀態）⇒ test/sharecard.mjs
+//   用一個假的 ctx 就能驗「有沒有印到分數／有沒有漏 undefined」，不需要瀏覽器。
+// ★ 誠實鐵則：卡片上的日期、題號、分數必須是同一局的。
+//   舊版分享文字印的是 `records.bestDailyScore`（歷來每日最高）卻配**今天**的日期，
+//   昨天打的 1800 分會被寫成今天的成績 —— 那是說謊。改成 `records.dailyToday`，
+//   跨日自動作廢（key 不是今天就當作沒挑戰過）。
+
+const SHARE_CARD_W = 1080;
+const SHARE_CARD_H = 1440;
+
+// 題號＝種子的後六位。和 seededRandom 的種子用同一條字串，所以「題號一樣＝盤面一樣」，
+// 老師報一個號、全班同一天同難度開出來就是同一局。
+function getDailyPuzzleNumber(key = dailyKey, difficulty = state.difficulty) {
+  return String(hashString(`${key}:${difficulty}:breakout`) % 1000000).padStart(6, "0");
 }
 
-async function shareDailyChallenge() {
-  const text = getDailyShareText();
-  setInstallHint("每日挑戰結果已準備好，正在開啟分享或複製。");
-  try {
-    if (navigator.share && isTouchDevice()) {
-      await navigator.share({ title: "打磚塊每日挑戰", text });
-      setInstallHint("每日挑戰結果已送出。");
-      return;
+// 這局結束時把「今天的成績」存起來（只在每日挑戰、非自訂關卡）。
+// 只留今天那一筆：留歷史等於寫了從來不讀的資料，而跨日的成績配今天的日期就是說謊。
+function recordDailyToday() {
+  if (state.mode !== "daily" || state.customRows) {
+    return;
+  }
+  const todayKey = getTodayKey();
+  const current = records.dailyToday && records.dailyToday.key === todayKey ? records.dailyToday : null;
+  if (current && current.score > state.score) {
+    return;
+  }
+  records.dailyToday = {
+    key: todayKey,
+    difficulty: state.difficulty,
+    score: state.score,
+    level: Math.max(1, sessionStats.highestLevel),
+    ballsUsed: sessionStats.livesLost,
+    maxCombo: sessionStats.maxCombo,
+    bricks: sessionStats.bricksDestroyed,
+  };
+  saveRecords();
+}
+
+// 圖卡與分享文字共用同一份資料來源，兩邊才不會慢慢走鐘（同 buildBricksFromRows 的理由）。
+function getDailyCardSource() {
+  const todayKey = getTodayKey();
+  const stored = records.dailyToday && records.dailyToday.key === todayKey ? records.dailyToday : null;
+  const live = state.mode === "daily" && !state.customRows
+    ? {
+      key: todayKey,
+      difficulty: state.difficulty,
+      score: state.score,
+      level: Math.max(1, sessionStats.highestLevel),
+      ballsUsed: sessionStats.livesLost,
+      maxCombo: sessionStats.maxCombo,
+      bricks: sessionStats.bricksDestroyed,
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-      setInstallHint("每日挑戰結果已複製，可以貼到 LINE、Discord 或社群。");
+    : null;
+  if (live && (!stored || live.score >= stored.score)) {
+    return { ...live, played: true };
+  }
+  if (stored) {
+    return { ...stored, played: true };
+  }
+  // 今天還沒挑戰過：卡片照樣做得出來，但要誠實寫「還沒挑戰」，不可以印 0 分假裝玩過。
+  return {
+    key: todayKey,
+    difficulty: state.difficulty,
+    score: 0,
+    level: 1,
+    ballsUsed: 0,
+    maxCombo: 0,
+    bricks: 0,
+    played: false,
+  };
+}
+
+function getDailyCardData() {
+  const source = getDailyCardSource();
+  const difficultyConfig = DIFFICULTIES[source.difficulty] || getDifficultyConfig();
+  const pattern = getLevelPattern(Math.max(1, source.level));
+  const theme = getThemeConfig();
+  const [grade, gradeTitle] = getGradeFor(source.score, source.level, source.maxCombo);
+  return {
+    dateKey: source.key,
+    puzzleNo: getDailyPuzzleNumber(source.key, source.difficulty),
+    difficultyLabel: difficultyConfig.label,
+    played: source.played,
+    score: source.score,
+    level: source.level,
+    ballsUsed: source.ballsUsed,
+    maxCombo: source.maxCombo,
+    bricks: source.bricks,
+    grade,
+    gradeTitle,
+    patternName: pattern.name,
+    patternRows: pattern.rows,
+    palette: theme.palette,
+    background: theme.background,
+    url: `${window.location.origin}${window.location.pathname}`,
+  };
+}
+
+function fillRoundRect(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function cardText(ctx, text, x, y, font, color, align = "center") {
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.textAlign = align;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(String(text), x, y);
+}
+
+// 純繪圖：不讀任何全域狀態，吃什麼畫什麼 ⇒ 可以用假 ctx 單測。
+function drawShareCard(ctx, data, size = { w: SHARE_CARD_W, h: SHARE_CARD_H }) {
+  const W = size.w;
+  const H = size.h;
+  const font = "'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif";
+  const palette = data.palette && data.palette.length
+    ? data.palette
+    : ["#55c1ff", "#63e6be", "#ffe66d", "#ffaf54", "#ff7f7f"];
+  const bg = data.background && data.background.length ? data.background : ["#0f345f", "#102a4b", "#0a1b34"];
+
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, bg[0]);
+  sky.addColorStop(0.55, bg[1] || bg[0]);
+  sky.addColorStop(1, bg[2] || bg[1] || bg[0]);
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // 上下各一條磚列，讓人一眼認出是打磚塊
+  for (let i = 0; i < 10; i += 1) {
+    ctx.fillStyle = palette[i % palette.length];
+    ctx.fillRect((W / 10) * i + 8, 0, W / 10 - 16, 20);
+    ctx.fillRect((W / 10) * i + 8, H - 20, W / 10 - 16, 20);
+  }
+
+  cardText(ctx, "打磚塊・每日挑戰", W / 2, 130, `700 62px ${font}`, "#ffffff");
+  cardText(
+    ctx,
+    `${data.dateKey}　${data.difficultyLabel}　題號 ${data.puzzleNo}`,
+    W / 2,
+    192,
+    `400 36px ${font}`,
+    "rgba(255,255,255,0.82)",
+  );
+
+  // 分數區
+  ctx.fillStyle = "rgba(255,255,255,0.10)";
+  fillRoundRect(ctx, 80, 236, W - 160, 300, 32);
+  if (data.played) {
+    cardText(ctx, "今日分數", W / 2, 306, `500 38px ${font}`, "rgba(255,255,255,0.75)");
+    cardText(ctx, data.score, W / 2, 452, `700 148px ${font}`, "#ffe66d");
+    cardText(ctx, `${data.grade}　${data.gradeTitle}`, W / 2, 510, `600 40px ${font}`, "#8be9ff");
+  } else {
+    cardText(ctx, "今天還沒挑戰", W / 2, 360, `700 72px ${font}`, "#ffe66d");
+    cardText(ctx, "點開就是今天這一局，全世界同一盤", W / 2, 440, `400 36px ${font}`, "rgba(255,255,255,0.82)");
+    cardText(ctx, `題號 ${data.puzzleNo}`, W / 2, 500, `600 40px ${font}`, "#8be9ff");
+  }
+
+  // 四格數字
+  const stats = [
+    ["最高關", data.level],
+    ["用掉球數", data.ballsUsed],
+    ["最大 Combo", data.maxCombo],
+    ["破壞磚塊", data.bricks],
+  ];
+  const cellW = (W - 160) / stats.length;
+  ctx.fillStyle = "rgba(255,255,255,0.07)";
+  fillRoundRect(ctx, 80, 566, W - 160, 172, 28);
+  stats.forEach(([label, value], index) => {
+    const cx = 80 + cellW * index + cellW / 2;
+    // 沒挑戰過就畫破折號 —— 印一排 0 會讓人以為「玩了但一分也沒拿到」
+    cardText(ctx, data.played ? value : "—", cx, 660, `700 62px ${font}`, data.played ? "#ffffff" : "rgba(255,255,255,0.45)");
+    cardText(ctx, label, cx, 708, `400 30px ${font}`, "rgba(255,255,255,0.7)");
+  });
+
+  // 關卡圖案縮圖 —— 這是本作版本的「Wordle 方格」：看得出今天走到哪一張圖
+  ctx.fillStyle = "rgba(255,255,255,0.07)";
+  fillRoundRect(ctx, 80, 768, W - 160, 470, 28);
+  cardText(
+    ctx,
+    data.played ? `第 ${data.level} 關・${data.patternName}` : `今天第 1 關・${data.patternName}`,
+    W / 2,
+    828,
+    `600 44px ${font}`,
+    "#ffffff",
+  );
+
+  const rows = Array.isArray(data.patternRows) ? data.patternRows : [];
+  const cols = rows.length ? rows[0].length : 0;
+  if (rows.length && cols) {
+    const gridW = W - 260;
+    const cell = Math.min(gridW / cols, 330 / rows.length);
+    const gridX = (W - cell * cols) / 2;
+    const gridY = 866 + (330 - cell * rows.length) / 2;
+    const gap = Math.max(3, cell * 0.08);
+    rows.forEach((row, r) => {
+      for (let c = 0; c < cols; c += 1) {
+        const ch = row[c] || ".";
+        const x = gridX + c * cell;
+        const y = gridY + r * cell;
+        if (ch === ".") {
+          ctx.fillStyle = "rgba(255,255,255,0.06)";
+        } else if (ch === "S") {
+          ctx.fillStyle = "#c3ccd8";
+        } else if (ch === "B") {
+          ctx.fillStyle = "#ff8a4c";
+        } else if (ch === "M") {
+          ctx.fillStyle = "#c39bff";
+        } else {
+          ctx.fillStyle = palette[r % palette.length];
+        }
+        ctx.fillRect(x + gap / 2, y + gap / 2, cell - gap, cell - gap);
+      }
+    });
+  }
+
+  cardText(ctx, "同一天、同一難度，全世界同一局", W / 2, 1300, `500 36px ${font}`, "rgba(255,255,255,0.85)");
+  cardText(ctx, data.url, W / 2, 1356, `400 30px ${font}`, "rgba(255,255,255,0.6)");
+}
+
+function shareCardFileName(dateKey) {
+  const safe = String(dateKey || "").replace(/[^0-9A-Za-z-]/g, "") || "today";
+  return `breakout-daily-${safe}.png`;
+}
+
+function getDailyShareText(data = getDailyCardData()) {
+  const lines = [
+    `打磚塊每日挑戰 ${data.dateKey}（題號 ${data.puzzleNo}）`,
+    `難度：${data.difficultyLabel}`,
+  ];
+  if (data.played) {
+    lines.push(
+      `分數：${data.score}（${data.grade} ${data.gradeTitle}）`,
+      `最高關：${data.level}・${data.patternName}`,
+      `用掉球數：${data.ballsUsed}　最大 Combo：${data.maxCombo}`,
+    );
+  } else {
+    lines.push("今天還沒挑戰，一起來打今天這一局。");
+  }
+  lines.push(`來挑戰：${data.url}`);
+  return lines.join("\n");
+}
+
+function renderShareCard() {
+  shareCardData = getDailyCardData();
+  shareCardCanvas.width = SHARE_CARD_W;
+  shareCardCanvas.height = SHARE_CARD_H;
+  const ctx = shareCardCanvas.getContext("2d");
+  if (!ctx) {
+    return;
+  }
+  drawShareCard(ctx, shareCardData, { w: SHARE_CARD_W, h: SHARE_CARD_H });
+}
+
+function setShareCardStatus(message = "") {
+  shareCardStatus.textContent = message;
+  shareCardStatus.hidden = !message;
+}
+
+function openShareCard() {
+  closeEditor();
+  renderShareCard();
+  shareCardPanel.hidden = false;
+  setShareCardStatus(shareCardData && shareCardData.played
+    ? "存成圖片或直接分享，朋友點開就是今天同一局。"
+    : "今天還沒挑戰過，這張是邀請卡；打完一局再回來就會帶上成績。");
+  shareCardPanel.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function closeShareCard() {
+  shareCardPanel.hidden = true;
+}
+
+function shareCardToBlob() {
+  return new Promise((resolve) => {
+    try {
+      if (shareCardCanvas.toBlob) {
+        shareCardCanvas.toBlob((blob) => resolve(blob), "image/png");
+        return;
+      }
+    } catch {
+      // 某些瀏覽器（或被權限擋住時）toBlob 會直接丟例外，退回 dataURL 那條路
+    }
+    resolve(null);
+  });
+}
+
+function downloadShareCard() {
+  try {
+    const link = document.createElement("a");
+    link.href = shareCardCanvas.toDataURL("image/png");
+    link.download = shareCardFileName(shareCardData && shareCardData.dateKey);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setShareCardStatus("圖卡已存成 PNG，可以傳給朋友或印出來。");
+  } catch {
+    setShareCardStatus("這個瀏覽器不給下載圖片，請長按上面的圖卡選「儲存圖片」。");
+  }
+}
+
+async function shareDailyCard() {
+  const text = getDailyShareText(shareCardData || getDailyCardData());
+  try {
+    const blob = await shareCardToBlob();
+    if (blob && navigator.share && navigator.canShare) {
+      const file = new File([blob], shareCardFileName(shareCardData && shareCardData.dateKey), { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: "打磚塊每日挑戰", text });
+        setShareCardStatus("圖卡已送出。");
+        return;
+      }
+    }
+    if (navigator.share) {
+      await navigator.share({ title: "打磚塊每日挑戰", text });
+      setShareCardStatus("成績已送出（這個瀏覽器不支援直接分享圖片，圖卡請用「下載 PNG」）。");
       return;
     }
   } catch {
-    // Sharing can be cancelled by the user; keep the game state unchanged.
+    // 使用者按取消也會走到這裡：不要當成錯誤，安靜退回下載那條路
+    setShareCardStatus("沒有送出，可以改用「下載 PNG」。");
+    return;
   }
-  setInstallHint(text.replace(/\n/g, " / "));
+  downloadShareCard();
+}
+
+async function copyDailyShareText() {
+  const text = getDailyShareText(shareCardData || getDailyCardData());
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      setShareCardStatus("文字成績已複製，可以貼到 LINE、Discord 或社群。");
+      return;
+    }
+  } catch {
+    // 沒有剪貼簿權限就把文字直接顯示出來讓人自己選取
+  }
+  setShareCardStatus(text.replace(/\n/g, " / "));
+}
+
+async function shareDailyChallenge() {
+  openShareCard();
 }
 
 function bindHoldButton(button, onPress, onRelease) {
@@ -4372,6 +4765,24 @@ document.addEventListener("visibilitychange", () => {
 
 backToSetupBtn.addEventListener("click", showSetupScreen);
 backToSetupOverlayBtn.addEventListener("click", showSetupScreen);
+
+// ⛶ 手動全螢幕:自動那條被擋掉時的第二次機會(0916)
+if (fullscreenBtn) {
+  fullscreenBtn.addEventListener("click", () => { toggleFullscreen(); });
+  document.addEventListener("fullscreenchange", updateFullscreenButton);
+  updateFullscreenButton();
+}
+
+// 🖼 結算畫面的「成績圖卡」：遊戲畫面是橫向全螢幕，圖卡住在設定頁 ⇒ 先回設定頁再開卡片。
+shareRunBtn.addEventListener("click", async () => {
+  await showSetupScreen();
+  openShareCard();
+});
+
+shareCardShareBtn.addEventListener("click", () => { shareDailyCard(); });
+shareCardDownloadBtn.addEventListener("click", downloadShareCard);
+shareCardCopyBtn.addEventListener("click", () => { copyDailyShareText(); });
+shareCardCloseBtn.addEventListener("click", closeShareCard);
 
 fireBtn.addEventListener("click", () => {
   unlockAudioFromGesture();

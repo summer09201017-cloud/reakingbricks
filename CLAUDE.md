@@ -24,16 +24,18 @@
 - 卡關輔助、打擊感（震屏／頓幀，尊重 prefers-reduced-motion）
 - 本機排行榜 Top 10、續玩存檔、關卡編輯器與分享碼
 
-## 現況（2026-09-15）
+## 現況（2026-09-16）
 
-**v2.2.0 / sw v20**，三邊一致（本機 = netlify.app = pages.dev）。
-工作區乾淨、已 push，HEAD = `e65a556`。
+**v2.3.0 / sw v21**（每日挑戰分享圖卡）。
 
-- ✅ 已完成的十一項改動與待做清單看 `roadmap.md`
+- ✅ 已完成的改動與待做清單看 `roadmap.md`
 - ✅ 接手要看的「怎麼跑、有什麼地雷、下一步」看 `讀我-HANDOFF.txt`
 - 📋 **等使用者拍板、不要自行開工**：耶利哥城牆主題關卡包（會改變本站定位，理由寫在 roadmap）
-- ⚠ Playwright 驗收腳本（約 150 項）**沒有進 repo**，只活在當時的 scratchpad；
-  repo 內只有兩支零相依測試（`test/patterns.mjs`、`test/sharecode.mjs`）
+- ⚠ 這個 repo 的正本現在在 `Downloads/hfpc-git/reakingbricks`（**純 ASCII 路徑**），
+  不再是 `Desktop/codex打磚塊`。下面部署段那顆「非 ASCII cwd 會讓 wrangler 硬崩」的雷
+  在這個路徑下踩不到了，但**「切到一個純 ASCII 空目錄再部署」的規矩仍然要照做** ——
+  它擋的是另一顆：cwd 就是 assets 夾時，wrangler 會把含 Cloudflare 帳號 id 的
+  `.wrangler/cache/wrangler-account.json` 寫進去並當成靜態資產公開。
 
 ## 回應與協作規則
 
@@ -55,6 +57,8 @@
 - `icons/`：PWA 圖示。
 - `test/patterns.mjs`：關卡圖案自我檢查（零相依）。
 - `test/sharecode.mjs`：分享碼格式契約檢查（零相依）。
+- `test/sharecard.mjs`：每日挑戰分享圖卡自我檢查（零相依，用假 ctx 驗「畫面上印了什麼字」）。
+- `test/verify-browser.mjs`：真瀏覽器驗收（`playwright-core` + 系統 Edge／Chrome，可打本機或線上）。
 - `roadmap.md`：待做清單與「刻意不做」的理由。
 - `讀我-HANDOFF.txt`：給另一台機接手用的交接文件。
 
@@ -81,7 +85,23 @@ node --check game.js
 node --check sw.js
 node test/patterns.mjs
 node test/sharecode.mjs
+node test/sharecard.mjs
 ```
+
+改過 UI、按鈕或圖卡，再跑一次真瀏覽器驗收 —— 它會**實際點下去**，抓得到「按了沒反應」
+這種語法檢查、單元測試甚至截圖都全綠也看不到的病（0915 dragtetris 實錘：一個半透明的
+角落徽章蓋住按鈕右下角，目視完全看不出來）：
+
+```powershell
+python -m http.server 8931          # 另一個視窗
+node test/verify-browser.mjs
+$env:BASE="https://bricksbreaking.pages.dev"; node test/verify-browser.mjs   # 打線上
+$env:SHOT="1"; node test/verify-browser.mjs                                   # 順便存截圖
+```
+
+⚠ 第一次造訪時 `sw.js` 會 `clients.claim()`，頁面會自己 reload 一次；驗收腳本在每次導覽後
+都要先安定（腳本裡的 `settle()`），否則 `page.evaluate` 會拿到「Execution context was
+destroyed」，看起來像網站壞了，其實是正常的更新流程。
 
 若修改 `manifest.webmanifest`，可執行：
 
@@ -129,7 +149,7 @@ Cloudflare Pages 那份要手動推：
 #   ⚠ 「中文路徑但非 git」那組會「部署成功卻回崩潰碼」⇒ 別只看退出碼判成敗，
 #     要看 `wrangler pages deployment list` 或線上指紋。
 # ★ 部署目錄只放要上線的 8 個檔，不要整包根目錄（避免 .git / .wrangler 外洩）。
-$dist = "$env:TEMPricks-dist"
+$dist = Join-Path $env:TEMP "bricks-dist"   # 0916 修：原本寫成 "$env:TEMP\bricks-dist"，反斜線在某次補丁裡被吃掉，變成一個展不開的變數名
 New-Item -ItemType Directory -Force $dist | Out-Null
 Copy-Item index.html,game.js,styles.css,sw.js,manifest.webmanifest $dist
 Copy-Item -Recurse -Force icons $dist
@@ -167,7 +187,18 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
   回設定頁時 `exitCustomLevel()` 一定要把它清掉，否則下一局還是同一張圖。
 - 內建圖案與自訂關卡共用 `buildBricksFromRows()` 與 `getBrickLayout()`，
   版面幾何只有一份，兩邊才不會慢慢走鐘。
+- 🖼 分享圖卡的 `drawShareCard()` 是**純繪圖函式**：只吃 ctx 與一包資料，不讀任何全域狀態，
+  所以 `test/sharecard.mjs` 才能用一個假 ctx 驗它。**不要在裡面讀 `state` / `records`** ——
+  一讀，那支測試就得搬半個遊戲進來，遲早會被放掉。資料一律從 `getDailyCardData()` 來，
+  圖卡與分享文字共用同一份，兩邊才不會慢慢走鐘（同 `buildBricksFromRows()` 的理由）。
+- 🖼 **誠實鐵則**：卡片上的日期、題號、分數必須是同一局的。舊版分享文字印的是
+  `records.bestDailyScore`（歷來每日最高）卻配**今天**的日期 —— 昨天打的分數會被寫成
+  今天的成績。現在成績存 `records.dailyToday`，`key` 不是今天就視同沒挑戰過，
+  卡片改印「今天還沒挑戰」與一排「—」，**不可以印 0 分假裝玩過**
+  （`test/sharecard.mjs` 有守這三條）。
 - 每日挑戰使用日期、難度與固定字串產生 seed，同一天同難度會有一致的隨機序列。
+  題號＝`hashString("日期:難度:breakout")` 的後六位，和 seed 用的是**同一條字串** ⇒
+  「題號一樣＝盤面一樣」，老師報一個號全班就開同一局。改那條字串＝換掉所有人的題號。
   續玩存檔會把 `seededRandom.getState()` 一起存，還原時 `setState()` 回去，
   否則續玩之後的關卡序列會跟別人不一樣，就不再是「全世界今天同一局」。
 - 續玩存檔在 `STORAGE_KEYS.run`，schema 版本是 `RUN_SAVE_VERSION`。

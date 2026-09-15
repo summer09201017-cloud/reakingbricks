@@ -91,7 +91,7 @@
         <div class="setup-actions">
           <button id="startBtn" type="button" class="primary-btn">開始遊玩</button>
           <button id="resumeRunBtn" type="button" class="primary-btn resume-btn" hidden>繼續上一局</button>
-          <button id="shareDailyBtn" type="button" class="secondary-btn">分享每日挑戰</button>
+          <button id="shareDailyBtn" type="button" class="secondary-btn">每日挑戰圖卡</button>
           <button id="editorBtn" type="button" class="secondary-btn">關卡編輯器</button>
           <button id="versionBtn" type="button" class="secondary-btn">版本資訊</button>
           <button id="updateBtn" type="button" class="secondary-btn" hidden>更新遊戲</button>
@@ -128,6 +128,21 @@
           <button id="editorPlay" type="button" class="primary-btn">試玩這一關</button>
           <button id="editorClose" type="button" class="secondary-btn">關閉編輯器</button>
         </div>
+      </section>
+
+      <section id="shareCardPanel" class="setup-panel share-card-panel" aria-label="每日挑戰分享圖卡" hidden>
+        <h2>每日挑戰圖卡</h2>
+        <p class="setup-note">把今天的成績做成一張圖，存起來或直接分享。同一天、同一難度，全世界開出來就是同一局，朋友點進來比的是同一盤磚。</p>
+        <div class="share-card-preview">
+          <canvas id="shareCardCanvas" width="1080" height="1440" aria-label="每日挑戰成績圖卡預覽"></canvas>
+        </div>
+        <div class="share-card-actions">
+          <button id="shareCardShareBtn" type="button" class="primary-btn">分享圖卡</button>
+          <button id="shareCardDownloadBtn" type="button" class="secondary-btn">下載 PNG</button>
+          <button id="shareCardCopyBtn" type="button" class="secondary-btn">複製文字</button>
+          <button id="shareCardCloseBtn" type="button" class="secondary-btn">關閉</button>
+        </div>
+        <p id="shareCardStatus" class="editor-status" aria-live="polite" hidden></p>
       </section>
 
       <section class="dashboard-grid" aria-label="遊戲資訊">
@@ -192,6 +207,7 @@
         </div>
 
         <div class="game-actions" aria-label="遊戲操作">
+          <button id="fullscreenBtn" type="button" class="secondary-btn" hidden>⛶</button>
           <button id="toggleBtn" type="button" class="secondary-btn">暫停</button>
           <button id="fireBtn" type="button" class="secondary-btn">射擊</button>
           <button id="settingsBtn" type="button" class="secondary-btn">音效</button>
@@ -215,6 +231,7 @@
             <button id="resumeBtn" type="button">繼續</button>
             <button id="restartBtn" type="button">重新開始</button>
             <button id="quickRestartBtn" type="button">3 秒重開</button>
+            <button id="shareRunBtn" type="button" class="secondary-btn" hidden>🖼 成績圖卡</button>
             <button id="backToSetupOverlayBtn" type="button" class="secondary-btn">回設定</button>
           </div>
           <div class="settings-menu" id="settingsMenu" hidden>

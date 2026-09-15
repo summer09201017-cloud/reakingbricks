@@ -498,7 +498,9 @@ button:active {
 }
 
 .game-actions button {
-  min-height: 40px;
+  /* 0916 手機體檢:實測直向 40px、橫向只有 34px(比 44px 下限少 23%),
+     而「射擊」是快節奏操作鈕 —— 點不準會直接影響玩得動玩不動。 */
+  min-height: 44px;
   padding: 8px 11px;
 }
 
@@ -1056,5 +1058,44 @@ kbd {
   .editor-rows button,
   .editor-actions button {
     flex: 1 1 calc(50% - 8px);
+  }
+}
+
+/* ── 🖼 每日挑戰分享圖卡（0916）────────────────────────────────────────────── */
+.share-card-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.share-card-preview {
+  display: flex;
+  justify-content: center;
+}
+
+/* 圖卡本身畫在 1080×1440 的 canvas 上（存出來才夠清楚），畫面上縮到看得見就好 */
+.share-card-preview canvas {
+  width: min(300px, 62vw);
+  height: auto;
+  border-radius: 14px;
+  border: 2px solid #ffffff3d;
+  box-shadow: 0 10px 26px #00000040;
+  background: #0a1b34;
+}
+
+.share-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 44px 是觸控目標下限：小於這個，孩子在平板上會一直點錯 */
+.share-card-actions button {
+  min-height: 44px;
+}
+
+@media (max-width: 480px) {
+  .share-card-actions button {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
   }
 }
