@@ -32,13 +32,22 @@
       開 WRANGLER_LOG=debug 只會看到 CF API 全回 200 然後就沒了）。
 
     ★ 真正的觸發條件是 **cwd 路徑含非 ASCII 字元**，不是「在 git repo 裡」。
+      而且 `pages deploy` 與 Workers 的 `wrangler deploy` **兩種模式都中**，
+      連 `--dry-run`（根本不上傳）也崩；`--assets` 指向純 ASCII 目錄救不了，
+      因為決定的是 cwd 不是路徑參數。唯讀指令（--version / project list）不受影響。
       這個 repo 的路徑是 Desktop\codex打磚塊，正好踩中。
       當天實測三組：
         ASCII 路徑 + git repo（emoji 多行 commit） → 乾淨成功
         中文路徑  + git repo                       → 上傳前就死，連 Uploading... 都沒有
         中文路徑  + 非 git                          → 上傳成功但行程仍以崩潰碼退出
-      （初版判準寫成「在 repo 目錄裡」，是 0915-take-over-喬治 拿 dragtetris
-        在 repo 目錄裡部署成功的反例逼出對照實驗才修正的。）
+      （這個判準被改過兩次，兩次都是別場的反例逼出來的：初版寫「在 repo 目錄裡」，
+        被 dragtetris 在 repo 目錄裡部署成功打掉；二版寫「中文路徑+git 才會上傳前死」，
+        被我自己做的「帶 remote、長 emoji 多行 commit 的中文 git repo 卻做得完」打掉。）
+
+    ★★ 為什麼「有時做完才死、有時還沒做就死」：0xC0000409 是**記憶體毀損**被偵測到，
+      崩潰點本來就不固定。這個 repo 穩定在做完前就死（輸出導到檔案確認不是緩衝被吃掉，
+      deployment list 也確認沒有新部署），但別的中文目錄會做完才死。
+      ⇒ 不要預測會是哪一種，非 ASCII cwd 一律當成不能用。
 
     ⇒ 修法：Push-Location 到任何純 ASCII 路徑（$env:TEMP 即可，是不是 git 無所謂），
       部署目錄給絕對路徑。完整指令在 CLAUDE.md。

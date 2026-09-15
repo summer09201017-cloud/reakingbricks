@@ -116,7 +116,9 @@ Cloudflare Pages 那份要手動推：
 ```powershell
 # ★ 必須「先切到純 ASCII 路徑」再跑，不可以在本 repo 目錄裡直接部署。
 #   觸發條件是 **cwd 路徑含非 ASCII 字元**（本 repo 是 codex打磚塊，正好踩中），
-#   跟「是不是 git repo」「commit message 長什麼樣」都無關（0915 三組對照實驗實測）。
+#   跟「是不是 git repo」「commit message 長什麼樣」都無關（0915 兩輪對照實驗實測）。
+#   `pages deploy` 與 Workers 的 `wrangler deploy` 兩種模式都中，連 --dry-run 也崩；
+#   `--assets` 指向純 ASCII 目錄救不了（決定的是 cwd）。唯讀指令不受影響。
 #   崩起來完全沒有訊息：只印橫幅，bash 給 exit 127、PowerShell 給 -1073740791
 #   = 0xC0000409 STATUS_STACK_BUFFER_OVERRUN（原生層硬崩，try/catch 接不到），
 #   而 WRANGLER_LOG=debug 顯示前面的 CF API 全回 200 ⇒ 非常難判讀。
