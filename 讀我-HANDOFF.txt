@@ -110,9 +110,13 @@
     grep 出來會像「檔案沒上去」（這一輪誤判過一次）。
   三邊都應該是 breakout-pwa-v20 / 2.2.0。
 
-  git：    git status --short      （應為空）
-           git log --oneline -1    （應為 e65a556）
-           git rev-list --count @{u}..HEAD   （應為 0）
+  git：    git status --short                 （應為空）
+           git rev-list --count @{u}..HEAD    （應為 0 = 真的推上去了）
+           git log --oneline -1
+  ⚠ 這裡刻意不寫死某一顆 SHA —— 交接 commit 本身就會推進 HEAD，
+    寫死的那一顆隔一個 commit 就是錯的（這份文件第一版就犯過）。
+    要對版就看「最後一顆功能 commit」：e65a556 = v2.2.0 關卡編輯器，
+    它之後只應該有文件類的 commit。
 
 
 ================================================================================
