@@ -17,6 +17,8 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 - 音樂與音效可分別調整音量，最高可調到 150%
 - 最高分、每日最高分、成就與設定會儲存在瀏覽器 `localStorage`
 - 支援經典模式與每日挑戰模式
+- 每一關使用不同的手繪圖案佈局：城牆、金字塔、拱門、十字、沙漏、棋盤、堡壘、愛心、雙塔、箭頭，每四關穿插一次 Boss 關
+- 關卡倒數會顯示本關的圖案名稱
 - 支援休閒、標準、挑戰三種難度
 - 支援經典立體、霓虹、糖果、石磚四種主題
 - 有音樂、音效、震動開關與暫停選單
@@ -36,6 +38,7 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 - 遊戲畫面上方會顯示關卡進度與剩餘磚塊
 - 支援 PWA 安裝到手機主畫面
 - Service Worker 會提示新版更新
+- 匿名使用計數涵蓋開啟、完賽與真實停留三層，零個資、離線自動略過
 
 ## 操作方式
 
@@ -67,6 +70,7 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 ├── manifest.webmanifest    # PWA 設定
 ├── netlify.toml            # Netlify 部署與快取標頭
 ├── icons/                  # PWA 圖示
+├── test/patterns.mjs       # 關卡圖案自我檢查(零相依)
 ├── CLAUDE.md               # AI 協作者維護指南
 └── README.md
 ```
@@ -94,7 +98,12 @@ http://localhost:8080
 ```powershell
 node --check game.js
 node --check sw.js
+node test/patterns.mjs
 ```
+
+`test/patterns.mjs` 會直接從 `game.js` 讀出關卡圖案，檢查每列寬度、圖例是否合法、
+有沒有「整張空」的圖案（會導致一開場就過關、無限跳關），以及圖案會不會長到底板附近。
+它不檢查圖形長得對不對——那要開瀏覽器逐關看畫面。
 
 檢查 PWA manifest：
 

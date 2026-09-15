@@ -62,8 +62,11 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const CHANGELOG = [
+  "每一關改成手繪圖案佈局：城牆、金字塔、拱門、十字、沙漏、棋盤、堡壘、愛心、雙塔、箭頭",
+  "關卡倒數會顯示本關圖案名稱",
+  "補上完賽匿名計數，讓遊玩統計不再只有開啟次數",
   "新增護盾、磁鐵板、穿透球、分數加倍、吸寶物、炸彈球、慢動作與雙板寶物",
   "新增 LIFE 生命寶物，吃到可增加生命",
   "新增自動雷射、x3/x4 分裂球、道具持續時間條與每日挑戰分享",
@@ -176,6 +179,98 @@ const THEMES = {
   },
 };
 
+// 🧱 關卡圖案(B1,0915):原本每一關都是 6×10 滿版矩形,只有 HP 在變 ——
+//    玩家第 3 關就看完了全部畫面。改成一組手設計的圖案依關卡輪替。
+//    圖例:# 一般磚 / . 空 / S 鋼鐵 / B 爆破 / M 移動。每列固定 PATTERN_COLS 格。
+//    ★ 強制特殊磚只在第 2 關起生效(沿用 pickSpecialBrick 的「第 1 關不出特殊磚」規則)。
+//    ★ 圖案由關卡編號決定 ⇒ 每日挑戰同一天同一關仍然完全一致。
+const PATTERN_COLS = 10;
+const LEVEL_PATTERNS = [
+  { name: "城牆", rows: [
+    "##########",
+    "##########",
+    "##########",
+    "#.##..##.#",
+    ".##.##.##.",
+  ] },
+  { name: "金字塔", rows: [
+    "....##....",
+    "...####...",
+    "..######..",
+    ".########.",
+    "##########",
+  ] },
+  { name: "拱門", rows: [
+    "..######..",
+    ".########.",
+    "##########",
+    "###....###",
+    "##......##",
+    "##......##",
+  ] },
+  { name: "十字", rows: [
+    "....##....",
+    "....##....",
+    "....##....",
+    "##########",
+    "##########",
+    "....##....",
+    "....##....",
+  ] },
+  { name: "沙漏", rows: [
+    "##########",
+    ".#......#.",
+    "..#....#..",
+    "...####...",
+    "..#....#..",
+    ".#......#.",
+    "##########",
+  ] },
+  { name: "棋盤", rows: [
+    "#.#.#.#.#.",
+    ".#.#.#.#.#",
+    "#.#.#.#.#.",
+    ".#.#.#.#.#",
+    "#.#.#.#.#.",
+    ".#.#.#.#.#",
+  ] },
+  { name: "堡壘", rows: [
+    "SS######SS",
+    "S........S",
+    "#..BBBB..#",
+    "#..BBBB..#",
+    "S........S",
+    "SS######SS",
+  ] },
+  { name: "愛心", rows: [
+    ".##....##.",
+    "##########",
+    "##########",
+    ".########.",
+    "..######..",
+    "...####...",
+    "....##....",
+  ] },
+  { name: "雙塔", rows: [
+    "##......##",
+    "##......##",
+    "##......##",
+    "##########",
+    "##.MMMM.##",
+    "##########",
+  ] },
+  { name: "箭頭", rows: [
+    "....##....",
+    "...####...",
+    "..######..",
+    ".###..###.",
+    "###....###",
+    "..#....#..",
+    "..#....#..",
+  ] },
+];
+const PATTERN_SPECIALS = { S: "steel", B: "bomb", M: "moving" };
+
 const POWERUP_TYPES = [
   { type: "laser", label: "GUN", color: "#ff93db" },
   { type: "expand", label: "WIDE", color: "#98f5b4" },
@@ -257,6 +352,7 @@ const state = {
   combo: 0,
   comboTimer: 0,
   restartCountdown: 0,
+  levelName: "",
   mode: preferences.mode in MODES ? preferences.mode : "classic",
   difficulty: preferences.difficulty in DIFFICULTIES ? preferences.difficulty : "normal",
   theme: preferences.theme in THEMES ? preferences.theme : "classic",
@@ -1039,11 +1135,11 @@ function updateOrientationPrompt() {
     pendingNewGameAfterLandscape = false;
     resizeCanvasForScreen();
     restartGame({ showStartOverlay: false });
-    beginLevelCountdown(`第 ${state.level} 關`);
+    beginLevelCountdown(getLevelTitle());
   } else if (pendingStartAfterLandscape) {
     pendingStartAfterLandscape = false;
     resizeCanvasForScreen();
-    beginLevelCountdown(`第 ${state.level} 關`);
+    beginLevelCountdown(getLevelTitle());
   }
 }
 
@@ -1181,7 +1277,7 @@ function cancelLevelCountdown() {
   overlay.classList.remove("countdown");
 }
 
-function beginLevelCountdown(title = `第 ${state.level} 關`) {
+function beginLevelCountdown(title = getLevelTitle()) {
   if (shouldShowRotatePrompt()) {
     pendingStartAfterLandscape = true;
     updateOrientationPrompt();
@@ -1369,14 +1465,26 @@ function pickSpecialBrick(level) {
   return "bounce";
 }
 
+function getLevelPattern(level) {
+  // 跳過 BOSS 關再取圖案 ⇒ 圖案不會因為 BOSS 佔掉編號而被整個跳過。
+  const bossesBefore = Math.floor(level / BOSS_INTERVAL);
+  const ordinal = Math.max(0, level - 1 - bossesBefore);
+  return LEVEL_PATTERNS[ordinal % LEVEL_PATTERNS.length];
+}
+
+function getLevelTitle() {
+  return state.levelName ? `第 ${state.level} 關 · ${state.levelName}` : `第 ${state.level} 關`;
+}
+
 function createBricks(level) {
   if (level > 1 && level % BOSS_INTERVAL === 0) {
+    state.levelName = "BOSS";
     createBossBricks(level);
     return;
   }
 
-  const rows = 6;
-  const cols = 10;
+  const pattern = getLevelPattern(level);
+  const cols = PATTERN_COLS;
   const top = 70;
   const side = 36;
   const gap = 8;
@@ -1384,11 +1492,22 @@ function createBricks(level) {
   const brickWidth = (canvas.width - side * 2 - gap * (cols - 1)) / cols;
   const hp = Math.min(4, 1 + Math.floor((level - 1) / 2) + getDifficultyConfig().hpBonus);
   const palette = getThemeConfig().palette;
+  const allowForcedSpecials = level >= 2;
 
+  state.levelName = pattern.name;
   bricks = [];
-  for (let row = 0; row < rows; row += 1) {
+
+  for (let row = 0; row < pattern.rows.length; row += 1) {
+    const line = pattern.rows[row];
     for (let col = 0; col < cols; col += 1) {
-      const special = pickSpecialBrick(level);
+      const cell = line[col] || ".";
+      if (cell === ".") {
+        continue;
+      }
+
+      // 圖例指定的特殊磚優先;'#' 才回頭抽隨機特殊磚(維持原本的難度曲線)。
+      const forced = allowForcedSpecials ? PATTERN_SPECIALS[cell] : null;
+      const special = forced || (cell === "#" ? pickSpecialBrick(level) : null);
       const baseX = side + col * (brickWidth + gap);
       const baseY = top + row * (brickHeight + gap);
       const specialHp = special === "steel" ? hp + 1 : hp;
@@ -1409,6 +1528,33 @@ function createBricks(level) {
         movePhase: random() * Math.PI * 2,
         moveRange: special === "moving" ? 14 + random() * 12 : 0,
       });
+    }
+  }
+
+  // 🛟 保險絲:圖案寫壞(整張空)會變成「一開場就過關」的無限迴圈 ⇒ 退回滿版矩形。
+  if (bricks.length === 0) {
+    state.levelName = "";
+    for (let row = 0; row < 6; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const baseX = side + col * (brickWidth + gap);
+        const baseY = top + row * (brickHeight + gap);
+        bricks.push({
+          x: baseX,
+          baseX,
+          y: baseY,
+          row,
+          col,
+          width: brickWidth,
+          height: brickHeight,
+          hp,
+          maxHp: hp,
+          color: palette[(row + col) % palette.length],
+          alive: true,
+          special: null,
+          movePhase: 0,
+          moveRange: 0,
+        });
+      }
     }
   }
 }
@@ -1622,6 +1768,11 @@ function loseLife() {
     });
     syncButton();
     saveRecords();
+    // 📡 完賽打點:一局分出結果的唯一時刻(無盡關卡制,生命歸零=這局結束)。
+    //    放在 saveRecords() 之後,統計壞掉也絕不影響存檔。
+    if (typeof window !== "undefined" && window.psDone) {
+      window.psDone();
+    }
     return;
   }
 
@@ -1661,7 +1812,7 @@ function nextLevel() {
   sessionStats.totalBricks = bricks.length;
   resetPositions();
   updateHud();
-  beginLevelCountdown(`第 ${state.level} 關`);
+  beginLevelCountdown(getLevelTitle());
   syncButton();
 }
 
@@ -2435,13 +2586,32 @@ function getBrickColor(brick) {
   if (brick.special === "bounce") {
     return "#7dd3fc";
   }
-  if (brick.hp >= 3) {
-    return "#f94144";
+  // 🎨 0915:原本 hp>=3 一律回傳寫死的紅 #f94144 ——
+  //    hp 從第 5 關起就固定 3~4 ⇒ 每顆普通磚都同一色,四個主題等於失效,關卡圖案也看不出層次。
+  //    改成「保留主題色、只調暗」:耐打度仍看得出來,而磚上本來就印著 hp 數字(不只靠顏色,對色盲也友善)。
+  if (brick.hp >= 4) {
+    return shadeColor(brick.color, -0.34);
+  }
+  if (brick.hp === 3) {
+    return shadeColor(brick.color, -0.22);
   }
   if (brick.hp === 2) {
-    return "#f8961e";
+    return shadeColor(brick.color, -0.11);
   }
   return brick.color;
+}
+
+// 把 #rrggbb 依 amount(-1~1)調暗/調亮。非 6 碼色碼原樣退回,絕不吐出 NaN 色。
+function shadeColor(hex, amount) {
+  if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) {
+    return hex;
+  }
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c) => clamp(Math.round(amount < 0 ? c * (1 + amount) : c + (255 - c) * amount), 0, 255);
+  const r = mix((n >> 16) & 255);
+  const g = mix((n >> 8) & 255);
+  const b = mix(n & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
 function getBrickLabel(brick) {

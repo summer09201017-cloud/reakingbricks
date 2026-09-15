@@ -19,6 +19,7 @@
 - 關卡進度與剩餘磚塊提示
 - 寶物系統，每種寶物整場最多掉落 2 次
 - 特殊磚塊：爆破磚、鋼鐵磚、移動磚
+- 每一關使用不同的手繪圖案佈局，每四關穿插 Boss 關
 
 ## 回應與協作規則
 
@@ -60,6 +61,7 @@ http://localhost:8080
 ```powershell
 node --check game.js
 node --check sw.js
+node test/patterns.mjs
 ```
 
 若修改 `manifest.webmanifest`，可執行：
@@ -90,4 +92,9 @@ Netlify 設定已在 `netlify.toml`。部署時：
 - 寶物掉落次數由 `POWERUP_LIMIT_PER_TYPE` 控制。
 - 目前版本號由 `APP_VERSION` 控制，更新內容由 `CHANGELOG` 控制。
 - 主題設定由 `THEMES` 控制，Canvas 內磚塊使用高光與陰影模擬 3D 厚度。
+- 關卡佈局由 `LEVEL_PATTERNS` 控制（ASCII 圖案，`#` 磚、`.` 空、`S/B/M` 指定特殊磚）。
+  改動圖案後務必跑 `node test/patterns.mjs`：整張空的圖案會讓 `checkLevelCleared()`
+  一開場就過關，變成無限跳關，而語法檢查抓不到。
+- 磚塊顏色由 `getBrickColor()` 決定：耐打度用「主題色調暗」表示，不再寫死紅色，
+  否則高關卡所有磚塊同色，四個主題與關卡圖案都會看不出差別。
 - 每日挑戰使用日期、難度與固定字串產生 seed，同一天同難度會有一致的隨機序列。
