@@ -65,11 +65,12 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.9.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-15", items: [
+    "Boss 會反擊：往下砸落石，落下前會有紅色預告線，護盾可以擋一次",
     "新增本機排行榜 Top 10，結算會顯示名次或「再多幾分能進榜」",
     "新增卡關輔助：同一關失誤兩次後自動加寬板子，過關後收回，可在設定關閉",
     "強化打擊感：擊碎磚塊、連擊、爆破與失誤會震動畫面並短暫頓格",
@@ -145,6 +146,14 @@ const ASSIST_MAX_STACKS = 3;
 // 💥 打擊感(0915):震屏 + 頓幀。打磚塊的命脈是「打到東西的手感」,原本偏軟。
 //    ★ 一律尊重 prefers-reduced-motion:這個系統設定就是給前庭敏感/暈動症的人用的,
 //      震屏正是最會誘發不適的那一類效果。開了就完全不震(值歸零,不是減弱)。
+// 👹 BOSS 反擊(0915):BOSS 原本只是一塊很厚的磚,打起來是「磨血」不是「戰鬥」。
+//    改成會往下砸落石。★ 照 beast-boss-kit 鐵則:一定要有紅色預告線(telegraph),
+//    判定=畫面 —— 無預警從天而降的秒殺對孩子只是「莫名其妙死掉」,不是難度。
+const BOSS_TELEGRAPH_SEC = 0.85;   // 預告線亮多久才真的砸下來
+const BOSS_ROCK_SPEED = 3.4;       // 落石速度(px / 16.67ms)
+const BOSS_ROCK_RADIUS = 9;
+const BOSS_ATTACK_BASE = 4.2;      // 兩次攻擊間隔(秒),難度與關卡會縮短
+const BOSS_ATTACK_MIN = 1.9;
 const SHAKE_DECAY = 7.5;          // 每秒衰減倍率
 const SHAKE_MAX = 9;              // 位移上限(px),再大就從「有力」變成「看不清」
 const HITSTOP_MAX = 0.085;        // 頓幀上限(秒)
@@ -431,6 +440,7 @@ const state = {
   assistWidthBonus: 0,
   shake: 0,
   hitStop: 0,
+  bossAttackTimer: 0,
   mode: preferences.mode in MODES ? preferences.mode : "classic",
   difficulty: preferences.difficulty in DIFFICULTIES ? preferences.difficulty : "normal",
   theme: preferences.theme in THEMES ? preferences.theme : "classic",
@@ -462,6 +472,7 @@ let bricks = [];
 let powerups = [];
 let bullets = [];
 let floatingTexts = [];
+let bossRocks = [];      // { x, y, vy, telegraph } —— telegraph > 0 時只畫預告線、還不會動
 let powerupSpawnCounts = createPowerupCounter();
 let sessionStats = createSessionStats();
 let seededRandom = Math.random;
@@ -1853,6 +1864,8 @@ function restartGame(options = {}) {
 
   paddle.width = getDifficultyConfig().paddleWidth;
   powerups = [];
+  bossRocks = [];
+  state.bossAttackTimer = 0;
   bullets = [];
   floatingTexts = [];
 
@@ -1964,6 +1977,7 @@ function loseLife() {
   clearTemporaryPowerups();
   powerups = [];
   bullets = [];
+  bossRocks = [];   // 殘留落石會變成「看不見的傷害」,掉命時一定要清
   updateHud();
   addImpact(7, 0.08);
   vibrate([80, 40, 80]);
@@ -2036,6 +2050,8 @@ function nextLevel() {
   clearTemporaryPowerups();
   powerups = [];
   bullets = [];
+  bossRocks = [];
+  state.bossAttackTimer = 0;
 
   createBricks(state.level);
   sessionStats.totalBricks = bricks.length;
@@ -2677,6 +2693,129 @@ function updateBalls(step) {
   }
 }
 
+// 場上還活著的 BOSS(沒有就是普通關)
+function getAliveBoss() {
+  return bricks.find((brick) => brick.special === "boss" && brick.alive) || null;
+}
+
+// BOSS 攻擊間隔:關卡愈深、難度愈硬,砸得愈勤
+function getBossAttackInterval() {
+  const byLevel = BOSS_ATTACK_BASE - state.level * 0.1;
+  const byDifficulty = getDifficultyConfig().hpBonus * 0.5;
+  return Math.max(BOSS_ATTACK_MIN, byLevel - byDifficulty);
+}
+
+// 預告一顆落石:先只放預告線,BOSS_TELEGRAPH_SEC 後才真的落下。
+// 瞄準板子目前位置(但不追蹤),玩家有時間走開 —— 這是「可閃」而不是「必中」。
+function spawnBossRock(boss) {
+  const targetX = clamp(
+    paddle.x + paddle.width * 0.5 + (random() - 0.5) * 120,
+    BOSS_ROCK_RADIUS + 4,
+    canvas.width - BOSS_ROCK_RADIUS - 4,
+  );
+  bossRocks.push({
+    x: targetX,
+    y: boss.y + boss.height * 0.5,
+    vy: BOSS_ROCK_SPEED + state.level * 0.05,
+    telegraph: BOSS_TELEGRAPH_SEC,
+  });
+}
+
+function updateBossAttack(deltaSec) {
+  const boss = getAliveBoss();
+  if (!boss) {
+    // BOSS 關結束就把殘留落石清掉,不要帶進下一關
+    if (bossRocks.length > 0) {
+      bossRocks = [];
+    }
+    state.bossAttackTimer = 0;
+    return;
+  }
+
+  state.bossAttackTimer -= deltaSec;
+  if (state.bossAttackTimer <= 0) {
+    state.bossAttackTimer = getBossAttackInterval();
+    spawnBossRock(boss);
+  }
+}
+
+function updateBossRocks(step, deltaSec) {
+  for (let i = bossRocks.length - 1; i >= 0; i -= 1) {
+    const rock = bossRocks[i];
+
+    if (rock.telegraph > 0) {
+      rock.telegraph = Math.max(0, rock.telegraph - deltaSec);
+      continue;   // 預告期間不移動,只有畫面上的紅線在閃
+    }
+
+    rock.y += rock.vy * step;
+
+    if (rock.y - BOSS_ROCK_RADIUS > canvas.height) {
+      bossRocks.splice(i, 1);
+      continue;
+    }
+
+    // 打到板子(含雙板寶物的分身)就扣一命;護盾會先擋掉
+    const rects = getPaddleHitRects();
+    const hit = rects.some((rect) =>
+      rock.x + BOSS_ROCK_RADIUS > rect.x
+      && rock.x - BOSS_ROCK_RADIUS < rect.x + rect.width
+      && rock.y + BOSS_ROCK_RADIUS > rect.y
+      && rock.y - BOSS_ROCK_RADIUS < rect.y + rect.height);
+
+    if (!hit) {
+      continue;
+    }
+
+    bossRocks.splice(i, 1);
+    if (state.shieldCharges > 0) {
+      state.shieldCharges -= 1;
+      addImpact(3, 0.03);
+      spawnFloatingText("護盾擋下落石", rock.x, rock.y - 14, "#67e8f9");
+      updateHud();
+      continue;
+    }
+
+    addImpact(6, 0.06);
+    spawnFloatingText("被落石打中！", rock.x, rock.y - 14, "#fb7185");
+    loseLife();
+    return;   // loseLife 會重置場面,不要再跑剩下的落石
+  }
+}
+
+function drawBossRocks() {
+  for (let i = 0; i < bossRocks.length; i += 1) {
+    const rock = bossRocks[i];
+
+    if (rock.telegraph > 0) {
+      // 紅色預告線:從 BOSS 一路畫到底,閃爍提示「這一條等一下會有東西掉下來」
+      const blink = 0.35 + 0.35 * Math.abs(Math.sin(rock.telegraph * 14));
+      ctx.save();
+      ctx.globalAlpha = blink;
+      ctx.strokeStyle = "#ff4d4d";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.moveTo(rock.x, rock.y);
+      ctx.lineTo(rock.x, canvas.height);
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
+
+    ctx.beginPath();
+    ctx.arc(rock.x, rock.y, BOSS_ROCK_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = "#fb7185";
+    ctx.shadowColor = "#ff9aa8";
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "#7f1d1d";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
 function updateBullets(step) {
   for (let i = bullets.length - 1; i >= 0; i -= 1) {
     const bullet = bullets[i];
@@ -3118,6 +3257,7 @@ function render() {
   drawShieldWall();
   drawPaddle();
   drawBalls();
+  drawBossRocks();
   drawFloatingTexts();
   if (shaking) {
     ctx.restore();
@@ -3152,6 +3292,8 @@ function gameLoop(ts) {
     if (state.running) {
       updatePowerups(worldStep);
       updateBullets(worldStep);
+      updateBossAttack(deltaSec);
+      updateBossRocks(worldStep, deltaSec);
       updateTimers(deltaSec);
     }
   }
