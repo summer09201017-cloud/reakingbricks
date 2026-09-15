@@ -47,6 +47,7 @@ const setupBestLevelEl = document.getElementById("setupBestLevel");
 const setupGamesPlayedEl = document.getElementById("setupGamesPlayed");
 const shareDailyBtn = document.getElementById("shareDailyBtn");
 const runStatsEl = document.getElementById("runStats");
+const topScoreList = document.getElementById("topScoreList");
 const achievementList = document.getElementById("achievementList");
 const levelProgressEl = document.getElementById("levelProgress");
 const remainingBricksEl = document.getElementById("remainingBricks");
@@ -64,11 +65,12 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.8.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-15", items: [
+    "新增本機排行榜 Top 10，結算會顯示名次或「再多幾分能進榜」",
     "新增卡關輔助：同一關失誤兩次後自動加寬板子，過關後收回，可在設定關閉",
     "強化打擊感：擊碎磚塊、連擊、爆破與失誤會震動畫面並短暫頓格",
     "尊重系統的「減少動態」設定，開啟時完全不震動畫面",
@@ -389,7 +391,10 @@ const defaultPreferences = {
   theme: "classic",
 };
 
+const TOP_SCORES_MAX = 10;
+
 const defaultRecords = {
+  topScores: [],
   bestScore: 0,
   bestLevel: 1,
   bestDailyScore: 0,
@@ -526,6 +531,101 @@ function savePreferences() {
 function saveRecords() {
   records.achievements = Array.from(unlockedAchievements);
   saveStoredObject(STORAGE_KEYS.records, records);
+}
+
+// 🏆 本機 Top 10(0915)。只在「一局真正結束」時入榜 —— 中途退回設定頁不算,
+//    跟 -done 完賽打點同一個語意,否則榜上會塞滿沒打完的半局。
+function normalizeTopScores() {
+  const list = Array.isArray(records.topScores) ? records.topScores : [];
+  const cleaned = list
+    .filter((row) => row && Number.isFinite(Number(row.score)))
+    .map((row) => ({
+      score: Math.max(0, Math.floor(Number(row.score))),
+      level: Math.max(1, Math.floor(Number(row.level) || 1)),
+      mode: row.mode in MODES ? row.mode : "classic",
+      difficulty: row.difficulty in DIFFICULTIES ? row.difficulty : "normal",
+      // 舊資料沒有日期就是沒有,不要編一個今天的日期上去
+      date: typeof row.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? row.date : null,
+    }))
+    .sort((a, b) => b.score - a.score || b.level - a.level)
+    .slice(0, TOP_SCORES_MAX);
+  records.topScores = cleaned;
+  return cleaned;
+}
+
+// 舊玩家只有 bestScore、沒有榜。把它補成第一筆,日期留 null（不偽造）。
+function migrateTopScores() {
+  normalizeTopScores();
+  if (records.topScores.length === 0 && records.bestScore > 0) {
+    records.topScores = [{
+      score: records.bestScore,
+      level: Math.max(1, records.bestLevel || 1),
+      mode: "classic",
+      difficulty: "normal",
+      date: null,
+    }];
+    saveRecords();
+  }
+}
+
+// 這個分數排第幾(1 起算);進不了榜回 0。
+function getTopScoreRank(score) {
+  const list = normalizeTopScores();
+  const better = list.filter((row) => row.score > score).length;
+  if (better >= TOP_SCORES_MAX) {
+    return 0;
+  }
+  return better + 1;
+}
+
+// 還差幾分才進得了榜;已經進得去回 0。
+function getPointsToEnterTop(score) {
+  const list = normalizeTopScores();
+  if (list.length < TOP_SCORES_MAX) {
+    return 0;
+  }
+  const lowest = list[list.length - 1].score;
+  return score > lowest ? 0 : lowest - score + 1;
+}
+
+// 一局結束時登錄。回傳名次(0 = 沒進榜)。
+function recordRunScore() {
+  if (state.score <= 0) {
+    return 0;
+  }
+  normalizeTopScores();
+  records.topScores.push({
+    score: state.score,
+    level: sessionStats.highestLevel,
+    mode: state.mode,
+    difficulty: state.difficulty,
+    date: getTodayKey(),
+  });
+  normalizeTopScores();
+  saveRecords();
+  renderTopScores();
+  const rank = records.topScores.findIndex((row) =>
+    row.score === state.score && row.date === getTodayKey() && row.level === sessionStats.highestLevel);
+  return rank >= 0 ? rank + 1 : 0;
+}
+
+function renderTopScores() {
+  if (!topScoreList) {
+    return;
+  }
+  const list = normalizeTopScores();
+  if (list.length === 0) {
+    topScoreList.innerHTML = `<p class="top-empty">還沒有紀錄，打完一局就會出現在這裡。</p>`;
+    return;
+  }
+  topScoreList.innerHTML = list.map((row, i) => `
+    <p class="top-row${i === 0 ? " top-row-first" : ""}">
+      <span class="top-rank">${i + 1}</span>
+      <strong class="top-score">${row.score}</strong>
+      <span class="top-meta">第 ${row.level} 關 · ${DIFFICULTIES[row.difficulty].label} · ${MODES[row.mode]}</span>
+      <span class="top-date">${row.date || "—"}</span>
+    </p>
+  `).join("");
 }
 
 function clamp(value, min, max) {
@@ -881,6 +981,9 @@ function updateHud() {
   setupGamesPlayedEl.textContent = String(records.gamesPlayed);
   updateLevelProgress();
   renderRunStats();
+  // ★ 不在這裡 renderTopScores():updateHud() 每次加分都會跑,
+  //   在裡面重建 10 列 innerHTML 會在 Combo 連打時造成卡頓。
+  //   排行榜只在「初始化」與「一局結束登錄」時重畫就夠了。
   renderModeLabel();
   renderEffectHud();
 }
@@ -1869,7 +1972,16 @@ function loseLife() {
     state.running = false;
     stopMusic();
     state.gameOver = true;
-    setOverlay("遊戲結束", `最終分數：${state.score}。最高分：${records.bestScore}。`, {
+    const rank = recordRunScore();
+    const gapToTop = getPointsToEnterTop(state.score);
+    const rankText = rank === 1
+      ? "🏆 新紀錄！這局排到第 1 名。"
+      : rank > 0
+        ? `進榜了！這局排第 ${rank} 名。`
+        : gapToTop > 0
+          ? `再多 ${gapToTop} 分就能擠進 Top 10。`
+          : "";
+    setOverlay("遊戲結束", `最終分數：${state.score}。最高分：${records.bestScore}。${rankText}`, {
       showActions: true,
       showSettings: true,
       stats: getOverlayStatItems(),
@@ -3447,7 +3559,9 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+migrateTopScores();
 restartGame({ countGame: false, showStartOverlay: false });
 renderAchievements();
+renderTopScores();
 updateInstallButton();
 requestAnimationFrame(gameLoop);

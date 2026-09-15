@@ -860,3 +860,59 @@ kbd {
     height: calc(100dvh - 68px);
   }
 }
+
+/* 🏆 排行榜 Top 10（0915）。
+   欄位用 grid 對齊：名次固定寬、分數靠右、說明與日期換行擺放，
+   窄螢幕不會把分數擠掉（手機是主力裝置）。 */
+.top-score-list {
+  display: grid;
+  gap: 4px;
+}
+
+.top-row {
+  display: grid;
+  grid-template-columns: 26px minmax(52px, auto) 1fr;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #ffffff0f;
+}
+
+.top-row-first {
+  background: #ffe66d24;
+}
+
+.top-rank {
+  color: var(--muted);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.top-score {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.top-meta,
+.top-date {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+/* 說明與日期擺在第二行、對齊分數欄，長難度／模式名不會把列撐爆 */
+.top-meta {
+  grid-column: 2 / -1;
+}
+
+.top-date {
+  grid-column: 2 / -1;
+  opacity: 0.75;
+}
+
+.top-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
