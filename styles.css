@@ -698,8 +698,29 @@ canvas {
 }
 
 .version-panel ul {
-  margin: 0;
+  margin: 0 0 4px;
   padding-left: 20px;
+}
+
+/* 版本標題旁的發佈日期：換行擺放，窄螢幕不會把「版本 1.6.0」擠掉。 */
+.version-panel .version-date {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+/* 每一批更新的日期小標 */
+.version-panel .version-release {
+  margin: 8px 0 2px;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.version-panel .version-release:first-of-type {
+  margin-top: 4px;
 }
 
 .rotate-prompt {

@@ -62,28 +62,49 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.6.1";
+// 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
+// ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
-  "每一關改成手繪圖案佈局：城牆、金字塔、拱門、十字、沙漏、棋盤、堡壘、愛心、雙塔、箭頭",
-  "關卡倒數會顯示本關圖案名稱",
-  "補上完賽匿名計數，讓遊玩統計不再只有開啟次數",
-  "新增護盾、磁鐵板、穿透球、分數加倍、吸寶物、炸彈球、慢動作與雙板寶物",
-  "新增 LIFE 生命寶物，吃到可增加生命",
-  "新增自動雷射、x3/x4 分裂球、道具持續時間條與每日挑戰分享",
-  "新增快樂頌等背景音樂曲目切換",
-  "新增分裂磚、加速磚、反彈磚與 Boss 大型磚",
-  "新增音樂與音效音量滑桿，並讓聲音預設再放大 50%",
-  "修正遊戲頁音效按鈕，現在會直接打開聲音設定面板",
-  "修正 PC 遊戲畫面置中與寬螢幕裁切問題",
-  "提升音樂與碰撞音效音量，並改善音訊解鎖流程",
-  "加厚底板並加入手機相對拖曳、PC 點畫布與 Enter 開始",
-  "新增設定頁、橫向全螢幕遊戲頁與手機旋轉提示",
-  "新增關卡開始倒數與精簡遊戲 HUD",
-  "新增主題切換與立體磚塊視覺",
-  "新增 Combo 連擊加分",
-  "新增快速重開倒數",
-  "升級結算畫面與關卡進度提示",
+  { date: "2026-09-15", items: [
+    "每一關改成手繪圖案佈局：城牆、金字塔、拱門、十字、沙漏、棋盤、堡壘、愛心、雙塔、箭頭",
+    "關卡倒數會顯示本關圖案名稱",
+    "磚塊耐打度改用主題色深淺表示，高關卡不再整片同色",
+    "補上完賽匿名計數，讓遊玩統計不再只有開啟次數",
+    "版本資訊補上更新日期，更新內容改為依日期分批顯示",
+  ] },
+  { date: "2026-09-14", items: [
+    "修正安裝成主畫面 App 後開啟失敗的問題",
+  ] },
+  { date: "2026-08-31", items: [
+    "畫面右下角會顯示目前實際執行中的版本號",
+  ] },
+  { date: "2026-08-15", items: [
+    "加入零個資的匿名遊玩計數，離線時自動略過，不影響遊戲",
+  ] },
+  { date: "2026-05-12", items: [
+    "新增護盾、磁鐵板、穿透球、分數加倍、吸寶物、炸彈球、慢動作與雙板寶物",
+    "新增 LIFE 生命寶物，吃到可增加生命",
+    "新增自動雷射、x3/x4 分裂球、道具持續時間條與每日挑戰分享",
+    "新增快樂頌等背景音樂曲目切換",
+    "新增分裂磚、加速磚、反彈磚與 Boss 大型磚",
+    "新增音樂與音效音量滑桿，並讓聲音預設再放大 50%",
+    "修正遊戲頁音效按鈕，現在會直接打開聲音設定面板",
+    "修正 PC 遊戲畫面置中與寬螢幕裁切問題",
+    "提升音樂與碰撞音效音量，並改善音訊解鎖流程",
+    "加厚底板並加入手機相對拖曳、PC 點畫布與 Enter 開始",
+    "新增設定頁、橫向全螢幕遊戲頁與手機旋轉提示",
+    "新增關卡開始倒數與精簡遊戲 HUD",
+  ] },
+  { date: "2026-05-11", items: [
+    "新增主題切換與立體磚塊視覺",
+    "新增 Combo 連擊加分",
+    "新增快速重開倒數",
+    "升級結算畫面與關卡進度提示",
+  ] },
 ];
+// 本版發佈日期＝最新一批的日期。刻意用推導的，避免「改了 CHANGELOG 忘了改日期」。
+const APP_DATE = CHANGELOG[0].date;
 const BALL_RADIUS = 8;
 const BIG_BALL_RADIUS = 13;
 const BASE_CANVAS_HEIGHT = 560;
@@ -585,10 +606,11 @@ function getRunGrade() {
 
 function renderVersionPanel() {
   versionPanel.innerHTML = `
-    <h3>版本 ${APP_VERSION}</h3>
-    <ul>
-      ${CHANGELOG.map((item) => `<li>${item}</li>`).join("")}
-    </ul>
+    <h3>版本 ${APP_VERSION}<span class="version-date">${APP_DATE} 更新</span></h3>
+    ${CHANGELOG.map((release) => `
+      <p class="version-release">${release.date}</p>
+      <ul>${release.items.map((item) => `<li>${item}</li>`).join("")}</ul>
+    `).join("")}
   `;
 }
 
@@ -2937,7 +2959,7 @@ function openSettingsMenu() {
 
 function openVersionPanel() {
   if (!isGameScreenActive) {
-    setInstallHint(`目前版本 ${APP_VERSION}：${CHANGELOG.join("、")}`);
+    setInstallHint(`目前版本 ${APP_VERSION}（${APP_DATE} 更新）：${CHANGELOG[0].items.join("、")}`);
     return;
   }
 
@@ -2945,7 +2967,7 @@ function openVersionPanel() {
     pauseGame(false);
   }
 
-  setOverlay("更新內容", `目前版本 ${APP_VERSION}`, {
+  setOverlay("更新內容", `目前版本 ${APP_VERSION}，${APP_DATE} 更新`, {
     showActions: true,
     showSettings: false,
     showVersion: true,

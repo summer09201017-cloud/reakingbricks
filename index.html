@@ -292,7 +292,10 @@
     if (e.data && e.data.type === 'SW_VERSION') {
       got = true;
       var s = String(e.data.v), m = /-((?:v|nf)?\d+)$/.exec(s);
-      el.textContent = '🏷️ 版本 ' + (m ? m[1] : s) + '(這台裝置實際執行中的版本)';
+      // 0915:徽章原本只有版號、沒有日期 —— 使用者看不出「這是多久以前的版本」。
+      //      版號仍以 SW 回報的為準(那才是真的在跑的那一版),日期取 game.js 的 APP_DATE。
+      var d = (typeof APP_DATE === 'string' && APP_DATE) ? ' · ' + APP_DATE : '';
+      el.textContent = '🏷️ 版本 ' + (m ? m[1] : s) + d + '(這台裝置實際執行中的版本)';
     }
   });
   function ask() { var c = navigator.serviceWorker.controller; if (c) c.postMessage('GET_VERSION'); }

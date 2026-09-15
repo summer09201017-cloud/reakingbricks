@@ -122,6 +122,9 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
 - `localStorage` 紀錄只存在目前瀏覽器與裝置。若要跨裝置排行榜，需要另接後端或 Netlify Functions。
 - 寶物掉落次數由 `POWERUP_LIMIT_PER_TYPE` 控制。
 - 目前版本號由 `APP_VERSION` 控制，更新內容由 `CHANGELOG` 控制。
+  `CHANGELOG` 是 `{ date, items }` 陣列，**最新一批放最前面**；發佈日期 `APP_DATE`
+  由 `CHANGELOG[0].date` 推導，不要另外寫死一份日期（會忘了同步改）。
+  日期請填「改動真正進 git 的日期」，需要回溯可用 `git log -S "<某條更新文字>" -- game.js`。
 - 主題設定由 `THEMES` 控制，Canvas 內磚塊使用高光與陰影模擬 3D 厚度。
 - 關卡佈局由 `LEVEL_PATTERNS` 控制（ASCII 圖案，`#` 磚、`.` 空、`S/B/M` 指定特殊磚）。
   改動圖案後務必跑 `node test/patterns.mjs`：整張空的圖案會讓 `checkLevelCleared()`
