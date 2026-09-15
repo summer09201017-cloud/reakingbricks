@@ -62,6 +62,7 @@ http://localhost:8080
 node --check game.js
 node --check sw.js
 node test/patterns.mjs
+node test/sharecode.mjs
 ```
 
 若修改 `manifest.webmanifest`，可執行：
@@ -131,6 +132,13 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
   一開場就過關，變成無限跳關，而語法檢查抓不到。
 - 磚塊顏色由 `getBrickColor()` 決定：耐打度用「主題色調暗」表示，不再寫死紅色，
   否則高關卡所有磚塊同色，四個主題與關卡圖案都會看不出差別。
+- 自訂關卡在 `state.customRows`（ASCII 圖案）。分享碼格式由 `encodeLevelCode()` /
+  `decodeLevelCode()` 決定：`B` + 列數 + 每兩格打包成一字 + 檢查碼，最長 43 字。
+  **改格式就是改分享碼**，別人手上的舊碼會失效；真要改請換開頭字母以示區別。
+  自訂關卡刻意不進排行榜、不寫最高分、不存續玩檔（規則不同，混在一起比沒有意義）；
+  回設定頁時 `exitCustomLevel()` 一定要把它清掉，否則下一局還是同一張圖。
+- 內建圖案與自訂關卡共用 `buildBricksFromRows()` 與 `getBrickLayout()`，
+  版面幾何只有一份，兩邊才不會慢慢走鐘。
 - 每日挑戰使用日期、難度與固定字串產生 seed，同一天同難度會有一致的隨機序列。
   續玩存檔會把 `seededRandom.getState()` 一起存，還原時 `setState()` 回去，
   否則續玩之後的關卡序列會跟別人不一樣，就不再是「全世界今天同一局」。

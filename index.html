@@ -92,11 +92,42 @@
           <button id="startBtn" type="button" class="primary-btn">開始遊玩</button>
           <button id="resumeRunBtn" type="button" class="primary-btn resume-btn" hidden>繼續上一局</button>
           <button id="shareDailyBtn" type="button" class="secondary-btn">分享每日挑戰</button>
+          <button id="editorBtn" type="button" class="secondary-btn">關卡編輯器</button>
           <button id="versionBtn" type="button" class="secondary-btn">版本資訊</button>
           <button id="updateBtn" type="button" class="secondary-btn" hidden>更新遊戲</button>
           <button id="installBtn" type="button" class="secondary-btn" hidden>安裝 APP</button>
         </div>
         <p id="installHint" class="install-hint" hidden></p>
+      </section>
+
+      <section id="editorPanel" class="setup-panel editor-panel" aria-label="關卡編輯器" hidden>
+        <h2>關卡編輯器</h2>
+        <p class="setup-note">選一種磚，再點格子畫上去。畫好後按「試玩這一關」，或把分享碼傳給別人。</p>
+
+        <div class="editor-brushes" id="editorBrushes" role="group" aria-label="選擇磚塊種類"></div>
+
+        <div class="editor-grid" id="editorGrid" role="group" aria-label="關卡格子"></div>
+
+        <p class="editor-status" id="editorStatus" aria-live="polite"></p>
+
+        <div class="editor-rows">
+          <button id="editorRowMinus" type="button" class="secondary-btn">－ 少一列</button>
+          <button id="editorRowPlus" type="button" class="secondary-btn">＋ 多一列</button>
+          <button id="editorClear" type="button" class="secondary-btn">清空</button>
+          <button id="editorFill" type="button" class="secondary-btn">填滿</button>
+        </div>
+
+        <label class="editor-code-label" for="editorCode">
+          分享碼（把這串傳給別人，他貼上就能玩你畫的關）
+          <input id="editorCode" type="text" inputmode="latin" autocomplete="off" spellcheck="false">
+        </label>
+
+        <div class="editor-actions">
+          <button id="editorCopy" type="button" class="secondary-btn">複製分享碼</button>
+          <button id="editorLoad" type="button" class="secondary-btn">載入分享碼</button>
+          <button id="editorPlay" type="button" class="primary-btn">試玩這一關</button>
+          <button id="editorClose" type="button" class="secondary-btn">關閉編輯器</button>
+        </div>
       </section>
 
       <section class="dashboard-grid" aria-label="遊戲資訊">

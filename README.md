@@ -19,6 +19,7 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 - 本機排行榜 Top 10，記錄分數、關卡、難度、模式與日期；結算會顯示名次或還差幾分進榜
 - 續玩存檔：離開遊戲或關掉分頁時自動保存整個場面（磚塊、球、寶物、道具時間），回到設定頁可按「繼續上一局」接著玩；存檔保留三天，遊戲結束或開新局時自動清除
 - 支援經典模式與每日挑戰模式
+- 關卡編輯器：用 10 欄 × 3～8 列的格子自己畫一關（一般磚／鋼鐵磚／爆破磚／移動磚），產生一串分享碼傳給別人，對方貼上就能玩同一張關卡；自訂關卡是一關定勝負，分數不列入排行榜與最高分（每張圖難度差異太大）
 - 每一關使用不同的手繪圖案佈局：城牆、金字塔、拱門、十字、沙漏、棋盤、堡壘、愛心、雙塔、箭頭，每四關穿插一次 Boss 關
 - 關卡倒數會顯示本關的圖案名稱
 - 支援休閒、標準、挑戰三種難度
@@ -77,6 +78,7 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 ├── netlify.toml            # Netlify 部署與快取標頭
 ├── icons/                  # PWA 圖示
 ├── test/patterns.mjs       # 關卡圖案自我檢查(零相依)
+├── test/sharecode.mjs      # 分享碼格式契約檢查(零相依)
 ├── CLAUDE.md               # AI 協作者維護指南
 └── README.md
 ```
@@ -105,6 +107,7 @@ http://localhost:8080
 node --check game.js
 node --check sw.js
 node test/patterns.mjs
+node test/sharecode.mjs
 ```
 
 `test/patterns.mjs` 會直接從 `game.js` 讀出關卡圖案，檢查每列寬度、圖例是否合法、

@@ -22,6 +22,20 @@ const installBtn = document.getElementById("installBtn");
 const updateBtn = document.getElementById("updateBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const versionBtn = document.getElementById("versionBtn");
+const editorBtn = document.getElementById("editorBtn");
+const editorPanel = document.getElementById("editorPanel");
+const editorBrushes = document.getElementById("editorBrushes");
+const editorGrid = document.getElementById("editorGrid");
+const editorStatus = document.getElementById("editorStatus");
+const editorRowMinus = document.getElementById("editorRowMinus");
+const editorRowPlus = document.getElementById("editorRowPlus");
+const editorClear = document.getElementById("editorClear");
+const editorFill = document.getElementById("editorFill");
+const editorCode = document.getElementById("editorCode");
+const editorCopy = document.getElementById("editorCopy");
+const editorLoad = document.getElementById("editorLoad");
+const editorPlay = document.getElementById("editorPlay");
+const editorClose = document.getElementById("editorClose");
 const difficultySelect = document.getElementById("difficultySelect");
 const modeSelect = document.getElementById("modeSelect");
 const themeSelect = document.getElementById("themeSelect");
@@ -66,11 +80,12 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.2.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-15", items: [
+    "新增關卡編輯器：自己畫一張關卡，產生分享碼傳給別人，對方貼上就能玩",
     "新增續玩存檔：離開時自動保存整個場面，回來可按「繼續上一局」接著玩",
     "標準與挑戰難度的磚塊會定時下移，碰到紅色危險線會扣一命；休閒難度不下移",
     "Boss 會反擊：往下砸落石，落下前會有紅色預告線，護盾可以擋一次",
@@ -370,6 +385,120 @@ const LEVEL_PATTERNS = [
 ];
 const PATTERN_SPECIALS = { S: "steel", B: "bomb", M: "moving" };
 
+// ── 🧩 自訂關卡：分享碼編解碼（0915）────────────────────────────────────────
+// 目標：一串「短到能貼進訊息、看得出是這個遊戲的碼、打錯一個字會被擋下來」的字串。
+//
+// 格式：B <列數> <格子> <檢查碼>
+//   - 開頭固定 "B"：讓人一眼看出這是打磚塊的碼，也擋掉隨手貼錯的東西。
+//   - 列數 1 碼：ALPHABET[列數]。
+//   - 格子：每格 5 種狀態（. # S B M），兩格打包成一個字（5×5=25 < 64），
+//     所以 10 欄 × 8 列 = 80 格只要 40 個字，整串約 43 字，貼得進任何聊天室。
+//   - 檢查碼 1 碼：打錯一個字幾乎一定被擋下來，不會還原出一張莫名其妙的圖。
+const EDITOR_COLS = PATTERN_COLS;          // 跟內建圖案同寬，換算與渲染才共用得了
+const EDITOR_MIN_ROWS = 3;
+const EDITOR_MAX_ROWS = 8;                 // 再多就會長到底板附近
+const EDITOR_MIN_BRICKS = 6;               // 太少的關卡一秒就破，沒有意義
+const SHARE_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
+const SHARE_PREFIX = "B";
+const EDITOR_GLYPHS = [".", "#", "S", "B", "M"];   // 索引即狀態值
+const EDITOR_GLYPH_LABELS = {
+  ".": "空白",
+  "#": "一般磚",
+  S: "鋼鐵磚",
+  B: "爆破磚",
+  M: "移動磚",
+};
+
+function encodeLevelCode(rows) {
+  const flat = [];
+  for (let r = 0; r < rows.length; r += 1) {
+    for (let c = 0; c < EDITOR_COLS; c += 1) {
+      const glyph = rows[r][c] || ".";
+      const index = EDITOR_GLYPHS.indexOf(glyph);
+      flat.push(index < 0 ? 0 : index);
+    }
+  }
+
+  let body = "";
+  for (let i = 0; i < flat.length; i += 2) {
+    const a = flat[i];
+    const b = i + 1 < flat.length ? flat[i + 1] : 0;
+    body += SHARE_ALPHABET[a * 5 + b];
+  }
+
+  const head = SHARE_PREFIX + SHARE_ALPHABET[rows.length];
+  return head + body + SHARE_ALPHABET[shareChecksum(head + body)];
+}
+
+function shareChecksum(text) {
+  let sum = 7;
+  for (let i = 0; i < text.length; i += 1) {
+    sum = (sum * 31 + text.charCodeAt(i)) % 64;
+  }
+  return sum;
+}
+
+// 解碼。任何一關過不了就回 null —— 寧可說「這個碼看起來怪怪的」，
+// 也不要還原出一張半壞的圖讓人以為是自己畫錯。
+function decodeLevelCode(code) {
+  if (typeof code !== "string") {
+    return null;
+  }
+  const clean = code.trim().replace(/\s+/g, "");
+  if (clean.length < 4 || clean[0] !== SHARE_PREFIX) {
+    return null;
+  }
+
+  const body = clean.slice(0, -1);
+  const checkChar = clean[clean.length - 1];
+  if (SHARE_ALPHABET.indexOf(checkChar) !== shareChecksum(body)) {
+    return null;   // 少打／多打／打錯一個字都會落在這裡
+  }
+
+  const rowCount = SHARE_ALPHABET.indexOf(body[1]);
+  if (rowCount < EDITOR_MIN_ROWS || rowCount > EDITOR_MAX_ROWS) {
+    return null;
+  }
+
+  const cells = [];
+  for (let i = 2; i < body.length; i += 1) {
+    const value = SHARE_ALPHABET.indexOf(body[i]);
+    if (value < 0 || value > 24) {
+      return null;
+    }
+    cells.push(Math.floor(value / 5), value % 5);
+  }
+
+  const needed = rowCount * EDITOR_COLS;
+  if (cells.length < needed) {
+    return null;
+  }
+
+  const rows = [];
+  for (let r = 0; r < rowCount; r += 1) {
+    let line = "";
+    for (let c = 0; c < EDITOR_COLS; c += 1) {
+      line += EDITOR_GLYPHS[cells[r * EDITOR_COLS + c]] || ".";
+    }
+    rows.push(line);
+  }
+
+  const bricks = rows.join("").split("").filter((ch) => ch !== ".").length;
+  if (bricks < EDITOR_MIN_BRICKS) {
+    return null;   // 空圖或幾乎空的圖：還原了也是一開場就過關
+  }
+  return rows;
+}
+
+function createBlankEditorRows(rowCount = 5) {
+  return Array.from({ length: clamp(rowCount, EDITOR_MIN_ROWS, EDITOR_MAX_ROWS) },
+    () => ".".repeat(EDITOR_COLS));
+}
+
+function countEditorBricks(rows) {
+  return rows.join("").split("").filter((ch) => ch !== ".").length;
+}
+
 const POWERUP_TYPES = [
   { type: "laser", label: "GUN", color: "#ff93db" },
   { type: "expand", label: "WIDE", color: "#98f5b4" },
@@ -458,6 +587,7 @@ const state = {
   levelName: "",
   assistStacks: 0,
   assistWidthBonus: 0,
+  customRows: null,   // 自訂關卡的 ASCII 圖案；null = 玩內建關卡
   shake: 0,
   hitStop: 0,
   bossAttackTimer: 0,
@@ -624,6 +754,10 @@ function getPointsToEnterTop(score) {
 
 // 一局結束時登錄。回傳名次(0 = 沒進榜)。
 function recordRunScore() {
+  // 自訂關卡不進排行榜:每張圖難度天差地遠,混在一起比分數沒有意義。
+  if (state.customRows) {
+    return 0;
+  }
   if (state.score <= 0) {
     return 0;
   }
@@ -721,6 +855,9 @@ function saveRun() {
   try {
     if (!isGameScreenActive || state.gameOver || !hasStartedRun()) {
       return;
+    }
+    if (state.customRows) {
+      return;   // 自訂關卡只有一關,存了也沒什麼好接的;而且存檔沒帶圖案
     }
     saveStoredObject(STORAGE_KEYS.run, serializeRun());
   } catch {
@@ -1243,6 +1380,12 @@ function addScore(points) {
     ? Math.ceil(points * SCORE_MULTIPLIER)
     : points;
   state.score += awardedPoints;
+  if (state.customRows) {
+    // 自訂關卡的分數不寫進最高分紀錄,理由同排行榜
+    evaluateAchievements();
+    updateHud();
+    return;
+  }
   if (state.score > records.bestScore) {
     records.bestScore = state.score;
     saveRecords();
@@ -1644,6 +1787,7 @@ async function showSetupScreen() {
   cancelLevelCountdown();
   cancelRestartCountdown();
   saveRun();   // 回設定頁前先存,回來才接得上
+  exitCustomLevel();   // 不清掉的話,下一次按「開始遊玩」還是玩同一張自訂圖
   pendingStartAfterLandscape = false;
   pendingNewGameAfterLandscape = false;
   pendingResumeAfterLandscape = false;
@@ -1703,6 +1847,134 @@ async function resumeSavedRun() {
   await requestLandscapeFullscreen();
   pendingResumeAfterLandscape = true;
   updateOrientationPrompt();
+}
+
+// ── 🧩 關卡編輯器 UI ───────────────────────────────────────────────────────
+let editorRows = createBlankEditorRows(5);
+let editorBrush = "#";
+
+// 每一種磚在編輯器格子上的顏色，跟遊戲裡 getBrickColor() 的特殊磚色一致，
+// 畫的時候看到什麼，玩的時候就是什麼。
+const EDITOR_BRUSH_COLORS = {
+  ".": "transparent",
+  "#": "#55c1ff",
+  S: "#aab7c7",
+  B: "#ff7f7f",
+  M: "#b39cff",
+};
+
+function setEditorCell(row, col, glyph) {
+  const line = editorRows[row];
+  editorRows[row] = line.slice(0, col) + glyph + line.slice(col + 1);
+}
+
+function renderEditorBrushes() {
+  editorBrushes.innerHTML = EDITOR_GLYPHS.map((glyph) => `
+    <button type="button" class="editor-brush${glyph === editorBrush ? " is-active" : ""}"
+      data-glyph="${glyph}" aria-pressed="${glyph === editorBrush}">
+      <span class="editor-swatch" style="background:${EDITOR_BRUSH_COLORS[glyph]}">${glyph === "." ? "" : glyph}</span>
+      ${EDITOR_GLYPH_LABELS[glyph]}
+    </button>
+  `).join("");
+}
+
+function renderEditorGrid() {
+  editorGrid.style.setProperty("--editor-cols", String(EDITOR_COLS));
+  editorGrid.innerHTML = editorRows.map((line, row) =>
+    Array.from({ length: EDITOR_COLS }, (unused, col) => {
+      const glyph = line[col] || ".";
+      return `<button type="button" class="editor-cell${glyph === "." ? " is-empty" : ""}"
+        data-row="${row}" data-col="${col}"
+        style="background:${EDITOR_BRUSH_COLORS[glyph]}"
+        aria-label="第 ${row + 1} 列第 ${col + 1} 格：${EDITOR_GLYPH_LABELS[glyph]}"
+      >${glyph === "." ? "" : glyph}</button>`;
+    }).join(""),
+  ).join("");
+}
+
+// 只更新一格。★ 不要整張重繪:80 格全部換掉會讓鍵盤使用者每點一次就失去焦點,
+//    而且每次點擊都重建 innerHTML 也沒必要。
+function paintEditorCell(cell, glyph) {
+  cell.style.background = EDITOR_BRUSH_COLORS[glyph];
+  cell.textContent = glyph === "." ? "" : glyph;
+  cell.classList.toggle("is-empty", glyph === ".");
+  cell.setAttribute(
+    "aria-label",
+    `第 ${Number(cell.dataset.row) + 1} 列第 ${Number(cell.dataset.col) + 1} 格：${EDITOR_GLYPH_LABELS[glyph]}`,
+  );
+}
+
+function renderEditorStatus() {
+  const count = countEditorBricks(editorRows);
+  const tooFew = count < EDITOR_MIN_BRICKS;
+  editorStatus.textContent = tooFew
+    ? `目前 ${count} 顆磚，至少要 ${EDITOR_MIN_BRICKS} 顆才能玩（太少的關一秒就破）。`
+    : `目前 ${editorRows.length} 列 / ${count} 顆磚，可以試玩了。`;
+  editorStatus.classList.toggle("is-warn", tooFew);
+  editorPlay.disabled = tooFew;
+  editorCopy.disabled = tooFew;
+  editorCode.value = tooFew ? "" : encodeLevelCode(editorRows);
+}
+
+function renderEditor() {
+  renderEditorBrushes();
+  renderEditorGrid();
+  renderEditorStatus();
+}
+
+function openEditor() {
+  editorPanel.hidden = false;
+  renderEditor();
+  editorPanel.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function closeEditor() {
+  editorPanel.hidden = true;
+}
+
+function setEditorRowCount(next) {
+  const target = clamp(next, EDITOR_MIN_ROWS, EDITOR_MAX_ROWS);
+  while (editorRows.length > target) {
+    editorRows.pop();
+  }
+  while (editorRows.length < target) {
+    editorRows.push(".".repeat(EDITOR_COLS));
+  }
+  renderEditor();
+}
+
+function loadEditorCode(code) {
+  const rows = decodeLevelCode(code);
+  if (!rows) {
+    editorStatus.textContent = "這串分享碼看起來不對，請確認有沒有少複製到字。";
+    editorStatus.classList.add("is-warn");
+    return false;
+  }
+  editorRows = rows;
+  renderEditor();
+  editorStatus.textContent = `已載入 ${rows.length} 列 / ${countEditorBricks(rows)} 顆磚的關卡。`;
+  editorStatus.classList.remove("is-warn");
+  return true;
+}
+
+async function playCustomLevel() {
+  if (countEditorBricks(editorRows) < EDITOR_MIN_BRICKS) {
+    return;
+  }
+  state.customRows = editorRows.slice();
+  closeEditor();
+  clearSavedRun();
+  unlockAudioFromGesture();
+  setInstallHint("");
+  showGameScreen();
+  await requestLandscapeFullscreen();
+  pendingNewGameAfterLandscape = true;
+  updateOrientationPrompt();
+}
+
+// 離開自訂關卡回到一般玩法。回設定頁時一定要呼叫，否則下一局還是那張自訂圖。
+function exitCustomLevel() {
+  state.customRows = null;
 }
 
 function updateInstallButton() {
@@ -1963,53 +2235,58 @@ function getLevelPattern(level) {
 }
 
 function getLevelTitle() {
+  if (state.customRows) {
+    return "自訂關卡";
+  }
   return state.levelName ? `第 ${state.level} 關 · ${state.levelName}` : `第 ${state.level} 關`;
 }
 
-function createBricks(level) {
-  if (level > 1 && level % BOSS_INTERVAL === 0) {
-    state.levelName = "BOSS";
-    createBossBricks(level);
-    return;
-  }
-
-  const pattern = getLevelPattern(level);
+// 磚塊的版面幾何。自訂關卡與內建圖案共用同一組數字，兩邊才不會慢慢走鐘。
+function getBrickLayout() {
   const cols = PATTERN_COLS;
-  const top = 70;
   const side = 36;
   const gap = 8;
-  const brickHeight = 24;
-  const brickWidth = (canvas.width - side * 2 - gap * (cols - 1)) / cols;
-  const hp = Math.min(4, 1 + Math.floor((level - 1) / 2) + getDifficultyConfig().hpBonus);
+  return {
+    cols,
+    side,
+    gap,
+    top: 70,
+    brickHeight: 24,
+    brickWidth: (canvas.width - side * 2 - gap * (cols - 1)) / cols,
+  };
+}
+
+// 從 ASCII 圖案產生磚塊。內建圖案與自訂關卡都走這裡，只差在要不要抽隨機特殊磚。
+function buildBricksFromRows(rows, options = {}) {
+  const { hp = 1, allowForcedSpecials = true, randomSpecialLevel = 0 } = options;
+  const layout = getBrickLayout();
   const palette = getThemeConfig().palette;
-  const allowForcedSpecials = level >= 2;
+  const out = [];
 
-  state.levelName = pattern.name;
-  bricks = [];
-
-  for (let row = 0; row < pattern.rows.length; row += 1) {
-    const line = pattern.rows[row];
-    for (let col = 0; col < cols; col += 1) {
+  for (let row = 0; row < rows.length; row += 1) {
+    const line = rows[row] || "";
+    for (let col = 0; col < layout.cols; col += 1) {
       const cell = line[col] || ".";
       if (cell === ".") {
         continue;
       }
 
-      // 圖例指定的特殊磚優先;'#' 才回頭抽隨機特殊磚(維持原本的難度曲線)。
+      // 圖例指定的特殊磚優先；'#' 才回頭抽隨機特殊磚（維持原本的難度曲線）。
       const forced = allowForcedSpecials ? PATTERN_SPECIALS[cell] : null;
-      const special = forced || (cell === "#" ? pickSpecialBrick(level) : null);
-      const baseX = side + col * (brickWidth + gap);
-      const baseY = top + row * (brickHeight + gap);
+      const special = forced
+        || (cell === "#" && randomSpecialLevel > 0 ? pickSpecialBrick(randomSpecialLevel) : null);
+      const baseX = layout.side + col * (layout.brickWidth + layout.gap);
+      const baseY = layout.top + row * (layout.brickHeight + layout.gap);
       const specialHp = special === "steel" ? hp + 1 : hp;
 
-      bricks.push({
+      out.push({
         x: baseX,
         baseX,
         y: baseY,
         row,
         col,
-        width: brickWidth,
-        height: brickHeight,
+        width: layout.brickWidth,
+        height: layout.brickHeight,
         hp: specialHp,
         maxHp: specialHp,
         color: palette[(row + col) % palette.length],
@@ -2020,32 +2297,48 @@ function createBricks(level) {
       });
     }
   }
+  return out;
+}
 
-  // 🛟 保險絲:圖案寫壞(整張空)會變成「一開場就過關」的無限迴圈 ⇒ 退回滿版矩形。
+function createBricks(level) {
+  // 自訂關卡：整局就是玩家畫的那一張，不接內建圖案、也不出 BOSS。
+  if (state.customRows) {
+    state.levelName = "自訂關卡";
+    bricks = buildBricksFromRows(state.customRows, {
+      hp: Math.min(3, 1 + getDifficultyConfig().hpBonus),
+      allowForcedSpecials: true,
+      randomSpecialLevel: 0,   // 自訂關卡完全照畫的來，不另外亂加特殊磚
+    });
+    if (bricks.length === 0) {
+      state.customRows = null;   // 理論上進不來（存進去前驗過），保險絲而已
+    } else {
+      return;
+    }
+  }
+
+  if (level > 1 && level % BOSS_INTERVAL === 0) {
+    state.levelName = "BOSS";
+    createBossBricks(level);
+    return;
+  }
+
+  const pattern = getLevelPattern(level);
+  const hp = Math.min(4, 1 + Math.floor((level - 1) / 2) + getDifficultyConfig().hpBonus);
+
+  state.levelName = pattern.name;
+  bricks = buildBricksFromRows(pattern.rows, {
+    hp,
+    allowForcedSpecials: level >= 2,
+    randomSpecialLevel: level,
+  });
+
+  // 🛟 保險絲：圖案寫壞（整張空）會變成「一開場就過關」的無限迴圈 ⇒ 退回滿版矩形。
   if (bricks.length === 0) {
     state.levelName = "";
-    for (let row = 0; row < 6; row += 1) {
-      for (let col = 0; col < cols; col += 1) {
-        const baseX = side + col * (brickWidth + gap);
-        const baseY = top + row * (brickHeight + gap);
-        bricks.push({
-          x: baseX,
-          baseX,
-          y: baseY,
-          row,
-          col,
-          width: brickWidth,
-          height: brickHeight,
-          hp,
-          maxHp: hp,
-          color: palette[(row + col) % palette.length],
-          alive: true,
-          special: null,
-          movePhase: 0,
-          moveRange: 0,
-        });
-      }
-    }
+    bricks = buildBricksFromRows(
+      Array.from({ length: 6 }, () => "#".repeat(PATTERN_COLS)),
+      { hp, allowForcedSpecials: false, randomSpecialLevel: 0 },
+    );
   }
 }
 
@@ -2330,6 +2623,25 @@ function loseLife() {
 function nextLevel() {
   state.running = false;
   stopMusic();
+
+  // 自訂關卡是「一關定勝負」:打完就結算,不接內建關卡(接了就不是玩家畫的那一關了)。
+  if (state.customRows) {
+    state.gameOver = true;
+    sessionStats.levelsCleared += 1;
+    addScore(100);
+    setOverlay("自訂關卡完成！", `得分 ${state.score}。把分享碼傳給朋友，看誰分數高。`, {
+      showActions: true,
+      showSettings: true,
+      stats: getOverlayStatItems(),
+    });
+    syncButton();
+    clearSavedRun();
+    if (typeof window !== "undefined" && window.psDone) {
+      window.psDone();
+    }
+    return;
+  }
+
 
   if (sessionStats.levelLivesLost === 0) {
     unlockAchievement("no_miss_level");
@@ -3970,6 +4282,83 @@ quickRestartBtn.addEventListener("click", () => {
 settingsBtn.addEventListener("click", openSettingsMenu);
 versionBtn.addEventListener("click", openVersionPanel);
 shareDailyBtn.addEventListener("click", shareDailyChallenge);
+// ── 🧩 關卡編輯器事件 ──────────────────────────────────────────────────────
+editorBtn.addEventListener("click", () => {
+  if (editorPanel.hidden) {
+    openEditor();
+  } else {
+    closeEditor();
+  }
+});
+editorClose.addEventListener("click", closeEditor);
+
+editorBrushes.addEventListener("click", (event) => {
+  const button = event.target.closest(".editor-brush");
+  if (!button) {
+    return;
+  }
+  editorBrush = button.dataset.glyph;
+  renderEditorBrushes();
+});
+
+// 用事件委派：格子有 80 個，逐一掛 listener 在每次重繪時都要重掛，容易漏。
+editorGrid.addEventListener("click", (event) => {
+  const cell = event.target.closest(".editor-cell");
+  if (!cell) {
+    return;
+  }
+  const row = Number(cell.dataset.row);
+  const col = Number(cell.dataset.col);
+  // 點到已經是這種磚的格子就擦掉 —— 不必先切到「空白」筆刷才能修改。
+  const current = editorRows[row][col];
+  const next = current === editorBrush ? "." : editorBrush;
+  setEditorCell(row, col, next);
+  paintEditorCell(cell, next);   // 就地更新這一格,不重建整張格子
+  renderEditorStatus();
+});
+
+editorRowMinus.addEventListener("click", () => setEditorRowCount(editorRows.length - 1));
+editorRowPlus.addEventListener("click", () => setEditorRowCount(editorRows.length + 1));
+editorClear.addEventListener("click", () => {
+  editorRows = createBlankEditorRows(editorRows.length);
+  renderEditor();
+});
+editorFill.addEventListener("click", () => {
+  editorRows = editorRows.map(() => editorBrush === "." ? ".".repeat(EDITOR_COLS) : editorBrush.repeat(EDITOR_COLS));
+  renderEditor();
+});
+
+editorLoad.addEventListener("click", () => loadEditorCode(editorCode.value));
+editorCode.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    loadEditorCode(editorCode.value);
+  }
+});
+
+editorCopy.addEventListener("click", async () => {
+  const code = editorCode.value;
+  if (!code) {
+    return;
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(code);
+      editorStatus.textContent = "分享碼已複製，貼給朋友就能玩你畫的關。";
+      editorStatus.classList.remove("is-warn");
+      return;
+    }
+  } catch {
+    // 有些瀏覽器不給剪貼簿權限，退回「請手動複製」而不是靜靜失敗
+  }
+  editorCode.focus();
+  editorCode.select();
+  editorStatus.textContent = "這個瀏覽器不給自動複製，分享碼已選取，請手動複製。";
+  editorStatus.classList.remove("is-warn");
+});
+
+editorPlay.addEventListener("click", playCustomLevel);
+
 resumeRunBtn.addEventListener("click", resumeSavedRun);
 
 // 離開分頁就存。★ 手機主要靠 pagehide/visibilitychange —— 使用者不會乖乖按「回設定」,
@@ -4112,6 +4501,7 @@ migrateTopScores();
 restartGame({ countGame: false, showStartOverlay: false });
 renderAchievements();
 renderTopScores();
+renderEditor();
 updateResumeButton();
 updateInstallButton();
 requestAnimationFrame(gameLoop);
