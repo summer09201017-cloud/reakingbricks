@@ -142,7 +142,9 @@ roadmap 第一列做掉了：每日挑戰分享圖卡。順手清掉 0916 手機
     **不要在裡面讀 `state` / `records`**，一讀這支測試就得搬半個遊戲進來。
   · `test/verify-browser.mjs`（新，29 項）—— 補掉舊 roadmap #4 的一半：
     0915 那輪的 Playwright 腳本只活在暫存資料夾，換一台機就沒了。
-    需要 `playwright-core`（本機已有）與系統 Edge／Chrome。
+    需要 `playwright-core` 與系統 Edge／Chrome。
+    ⚠ 這句原本寫「（本機已有）」——**那是寫的人那台機的事實,不是通則**。
+      解析得不得到取決於「這個 clone 的路徑往上有沒有 node_modules」,做法見下面 ■⑤。
     ⚠ 它踩過的兩個坑已經寫在腳本註解裡：①第一次造訪時 sw.js 會 `clients.claim()`
       ⇒ 頁面自己 reload 一次，`page.evaluate` 撞上那一下會拿到
       「Execution context was destroyed」，看起來像網站壞了其實是正常更新流程
