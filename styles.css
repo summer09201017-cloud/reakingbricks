@@ -792,7 +792,9 @@ kbd {
 
 @media (orientation: landscape) and (max-height: 560px) {
   :root {
-    --hud-height: 58px;
+    /* 0916:58 → 64 —— 橫向那五顆鈕要從 34px 拉到 44px(觸控下限),
+       HUD 得讓出 6px 給它們。直向那份本來就合格,只有橫向沒跟上。 */
+    --hud-height: 64px;
   }
 
   .game-hud {
@@ -824,8 +826,10 @@ kbd {
   }
 
   .game-actions button {
-    min-height: 34px;
-    padding: 6px 8px;
+    /* ⚠ 0916 手機健檢紅燈:這裡原本是 34px —— 而「射擊」是要反覆按的鈕,
+       34px 在真手機上按不準。直向那份 0 顆不合格,只有橫向這段沒跟上。 */
+    min-height: 44px;
+    padding: 6px 10px;
     font-size: 0.86rem;
   }
 
@@ -1098,4 +1102,118 @@ kbd {
     flex: 1 1 calc(50% - 8px);
     min-width: 0;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   0916 手機健檢紅黃燈修正(DEYI 場線上實測 iPhone 844×390 / 390×844)
+   ───────────────────────────────────────────────────────────── */
+
+/* ② 🔴 橫向首頁:整頁 2912px 高,而「開始遊玩」在 top=879 ——
+      844×390 的可見範圍內**一顆可點元素都沒有**,使用者要盲捲兩個半畫面才找得到開始鈕。
+      ⇒ 橫向時把**真正那顆** #startBtn 黏在畫面底部(不是複製一顆新的:
+        複製會多一份事件接線,兩顆鈕哪天行為不一致沒人發現)。 */
+@media (orientation: landscape) and (max-height: 560px) {
+  body:not(.is-game-active) #startBtn,
+  body:not(.is-game-active) #resumeRunBtn:not([hidden]) {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: auto;
+    z-index: 40;
+    min-height: 48px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  }
+  /* 兩顆同時在的時候(有上一局可續)往上疊一層,不要互相蓋住 */
+  body:not(.is-game-active) #resumeRunBtn:not([hidden]) {
+    bottom: max(64px, calc(env(safe-area-inset-bottom) + 54px));
+  }
+  /* 讓出黏底鈕的高度,不然它會蓋住頁尾內容 */
+  body:not(.is-game-active) .setup-screen {
+    padding-bottom: 124px;
+  }
+  /* 橫向的 hero 佔了 259px(視窗高的 66%)⇒ 壓扁一點,讓設定項也看得到 */
+  body:not(.is-game-active) .setup-hero {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  body:not(.is-game-active) .setup-hero h1 {
+    font-size: 1.6rem;
+  }
+}
+
+/* ③ 🟠 觸控目標:select 42px、音量 slider 只有 13~16px 高(瀏覽器預設)。
+      slider 拉高到 44px,但**軌道視覺維持細的** —— 變高的是可按範圍,不是外觀。 */
+select {
+  min-height: 44px;
+}
+
+.settings-menu .settings-select select {
+  min-height: 44px;
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+input[type='range']::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  background: #9fe5ff;
+  /* 把 24px 的拇指對齊 6px 的軌道中線 */
+  margin-top: -9px;
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  background: #9fe5ff;
+}
+
+/* ③ 續:核取方塊是瀏覽器預設的 13×13(音樂/音效/震動/輔助)——
+   它們包在 <label> 裡,所以真正的觸控目標是整個 label ⇒ 把 label 拉到 44px、
+   方塊本身放大到 22px(看得見也按得到)。 */
+.setup-toggles label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.setup-toggles input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: #9fe5ff;
+  cursor: pointer;
+}
+
+/* 首頁那排次要鈕量到 43px —— 差 1px,順手補齊(DEYI 沒點名,但在同一條紅線下) */
+.secondary-btn {
+  min-height: 44px;
 }

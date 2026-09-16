@@ -208,7 +208,77 @@ if (process.env.SHOT) {
   console.log(`  截圖存到 ${SHOT_DIR}/`);
 }
 
-check(errors.length === 0, "全程沒有 JS 例外", errors.join(" / "));
+check(errors.length === 0, "全程沒有 JS 例外（直向）", errors.join(" / "));
+
+// ── 橫向 844×390 ──────────────────────────────────────────────
+// ★ 為什麼要補這一段:上面整支只跑 390×844 直向,而 0916 健檢的兩顆紅燈**都在橫向**
+//   ——「遊戲中五顆鈕 34px」與「首頁可見範圍內一顆可點元素都沒有」。
+//   直向那份當時是全綠的 ⇒ 只跑直向的驗收對這兩件永遠是綠的。
+const land = await browser.newContext({
+  viewport: { width: 844, height: 390 },
+  deviceScaleFactor: 2,
+  isMobile: true,
+  hasTouch: true,
+});
+const lp = await land.newPage();
+lp.setDefaultTimeout(8000);
+lp.setDefaultNavigationTimeout(45000);
+const landErrors = [];
+lp.on("pageerror", (error) => landErrors.push(String(error)));
+await lp.goto(BASE, { waitUntil: "domcontentloaded" });
+await lp.waitForTimeout(1200);
+
+const startState = await lp.evaluate(() => {
+  const sb = document.getElementById("startBtn");
+  if (!sb) return null;
+  const r = sb.getBoundingClientRect();
+  // ⚠ 只看 inView 不夠:被別的東西蓋住時它照樣「在可見範圍內」
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return {
+    inView: r.top < innerHeight && r.bottom > 0,
+    h: Math.round(r.height),
+    reachable: hit === sb || sb.contains(hit),
+  };
+});
+check(
+  Boolean(startState && startState.inView && startState.reachable),
+  '橫向首頁:「開始遊玩」在可見範圍內且真的點得到（0916 體檢:可見範圍內一顆可點元素都沒有）',
+  JSON.stringify(startState)
+);
+check(Boolean(startState && startState.h >= 44), "橫向首頁:開始鈕 ≥44px", String(startState && startState.h));
+
+const smallLand = await lp.evaluate(() => {
+  const bad = [];
+  for (const el of document.querySelectorAll("button, select, .setup-toggles label")) {
+    if (el.hidden) continue;
+    const r = el.getBoundingClientRect();
+    if (r.height > 0 && r.height < 44) bad.push(`${(el.textContent || "").trim().slice(0, 8)}=${Math.round(r.height)}`);
+  }
+  return bad;
+});
+check(smallLand.length === 0, "橫向首頁:按鈕/下拉/開關的觸控目標都 ≥44px", smallLand.join("/"));
+
+await lp.locator("#startBtn").click({ timeout: 8000 }).catch(() => {});
+await lp.waitForTimeout(1500);
+const smallLandHud = await lp.evaluate(() => {
+  const bad = [];
+  document.querySelectorAll(".game-actions button").forEach((b) => {
+    if (b.hidden) return;
+    const r = b.getBoundingClientRect();
+    if (r.height > 0 && r.height < 44) bad.push(`${b.textContent.trim()}=${Math.round(r.height)}`);
+  });
+  return bad;
+});
+check(
+  smallLandHud.length === 0,
+  "橫向遊戲中:HUD 五顆鈕都 ≥44px（0916 體檢是 34px,而「射擊」是要反覆按的）",
+  smallLandHud.join("/")
+);
+
+if (process.env.SHOT) {
+  await lp.screenshot({ path: `${SHOT_DIR}/game-landscape.png`, fullPage: false });
+}
+check(landErrors.length === 0, "全程沒有 JS 例外（橫向）", landErrors.join(" / "));
 
 await browser.close();
 console.log(fail === 0 ? "\n==> 全部通過" : `\n==> ${fail} 項失敗`);
