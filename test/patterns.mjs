@@ -66,5 +66,70 @@ check(seen.size === LEVEL_PATTERNS.length, `每張圖案都輪得到(${seen.size
 const lowest = TOP + Math.max(...LEVEL_PATTERNS.map((p) => p.rows.length)) * ROW_PITCH;
 check(lowest < PADDLE_TOP - 80, `最低磚底 y=${lowest},底板頂 y=${PADDLE_TOP}`);
 
+// ── 📱 直向版面的幾何(0916)────────────────────────────────────────────────
+// 上面那三個常數是手抄橫向的值。直向的版面是算出來的(隨畫布高變),抄不了 ——
+// 所以直接把 game.js 裡那幾支版面函式**原地挖出來執行**,避免測試裡養出第二份會走鐘的公式。
+function sliceFunction(name) {
+  const at = src.indexOf(`function ${name}(`);
+  if (at < 0) throw new Error(`找不到 ${name}()`);
+  let depth = 0;
+  for (let i = src.indexOf("{", at); i < src.length; i += 1) {
+    if (src[i] === "{") depth += 1;
+    else if (src[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return src.slice(at, i + 1);
+    }
+  }
+  throw new Error(`${name}() 的大括號不成對`);
+}
+
+const PADDLE_HEIGHT = Number(/const PADDLE_HEIGHT = (\d+)/.exec(src)[1]);
+const PORTRAIT_BASE_WIDTH = Number(/const PORTRAIT_BASE_WIDTH = (\d+)/.exec(src)[1]);
+const PORTRAIT_MIN_ASPECT = Number(/const PORTRAIT_MIN_ASPECT = ([\d.]+)/.exec(src)[1]);
+const PORTRAIT_MAX_ASPECT = Number(/const PORTRAIT_MAX_ASPECT = ([\d.]+)/.exec(src)[1]);
+
+const layoutApi = new Function(
+  "canvas", "isPortraitLayout", "clamp", "PATTERN_COLS", "PADDLE_BOTTOM_GAP",
+  [
+    sliceFunction("getBrickLayout"),
+    sliceFunction("getBrickRowPitch"),
+    sliceFunction("getPaddleBottomGap"),
+    "return { getBrickLayout, getBrickRowPitch, getPaddleBottomGap };",
+  ].join("\n"),
+);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// 兩端都要驗:iPad 直向(最方)與長身手機(最長),中間的比例不會更糟
+const CASES = [
+  { name: "橫向 1428x560", w: 1428, h: 560, portrait: false },
+  { name: "橫向 812x560", w: 812, h: 560, portrait: false },
+  { name: `直向 ${PORTRAIT_BASE_WIDTH}x${Math.round(PORTRAIT_BASE_WIDTH * PORTRAIT_MIN_ASPECT)}(平板)`,
+    w: PORTRAIT_BASE_WIDTH, h: Math.round(PORTRAIT_BASE_WIDTH * PORTRAIT_MIN_ASPECT), portrait: true },
+  { name: `直向 ${PORTRAIT_BASE_WIDTH}x${Math.round(PORTRAIT_BASE_WIDTH * PORTRAIT_MAX_ASPECT)}(長身手機)`,
+    w: PORTRAIT_BASE_WIDTH, h: Math.round(PORTRAIT_BASE_WIDTH * PORTRAIT_MAX_ASPECT), portrait: true },
+];
+
+for (const c of CASES) {
+  const canvas = { width: c.w, height: c.h };
+  const api = layoutApi(canvas, () => c.portrait, clamp, PATTERN_COLS, 28);
+  const L = api.getBrickLayout();
+  const pitch = api.getBrickRowPitch();
+  const paddleTop = c.h - api.getPaddleBottomGap() - PADDLE_HEIGHT;
+  const deepest = L.top + MAX_ROWS * pitch;   // 自訂關卡最多 MAX_ROWS 列,比內建圖案更深
+  const right = L.side + PATTERN_COLS * L.brickWidth + (PATTERN_COLS - 1) * L.gap;
+  const bad = [];
+
+  if (deepest >= paddleTop - 60) bad.push(`最深磚底 ${Math.round(deepest)} 太靠近底板 ${Math.round(paddleTop)}`);
+  if (right > c.w + 0.5) bad.push(`磚牆右緣 ${Math.round(right)} 超出畫布 ${c.w}`);
+  if (L.brickWidth <= L.brickHeight) bad.push(`磚 ${Math.round(L.brickWidth)}x${L.brickHeight} 變成直立的了`);
+  if (L.top < 40) bad.push(`磚牆頂 ${L.top} 會被進度條蓋住`);
+  // 板子底下要留得出拇指區(直向單手握時手指會擋住板子本身)
+  if (c.portrait && c.h - paddleTop - PADDLE_HEIGHT < c.h * 0.06) bad.push("底下沒留出拇指區");
+
+  check(bad.length === 0,
+    `${c.name}:磚 ${Math.round(L.brickWidth)}x${L.brickHeight}、列距 ${pitch}、頂 ${L.top}、底板 ${Math.round(paddleTop)}`
+    + (bad.length ? " → " + bad.join("；") : ""));
+}
+
 console.log(fail ? `\n==> ${fail} 項不合格` : "\n==> 全部通過");
 process.exit(fail ? 1 : 0);

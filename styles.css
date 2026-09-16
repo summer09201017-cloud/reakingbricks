@@ -856,15 +856,77 @@ kbd {
   }
 }
 
+/* 📱 直向遊玩（0916）。以前直向會被「請轉為橫向」蓋版擋住，所以 HUD 從來沒有人
+   在 390px 寬底下真的看過它 —— 而原本的三欄版面（標題 140 + 狀態 260 + 五顆鈕）
+   最小寬度就超過 390，直向一定橫向溢出。改成兩列：上列標題＋狀態，下列五顆鈕。 */
 @media (orientation: portrait) and (max-width: 760px) {
+  body.is-game-active {
+    --hud-height: 104px;
+  }
+
   body.is-game-active .game-hud {
-    min-height: 68px;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    grid-template-areas:
+      "title stats"
+      "actions actions";
+    row-gap: 6px;
+    column-gap: 8px;
+    min-height: var(--hud-height);
+    padding-bottom: 6px;
+  }
+
+  body.is-game-active .game-title {
+    grid-area: title;
+  }
+
+  body.is-game-active .game-title h1 {
+    font-size: 1.02rem;
+  }
+
+  body.is-game-active .game-title p {
+    font-size: 0.78rem;
+  }
+
+  body.is-game-active .stats {
+    grid-area: stats;
+    justify-content: flex-end;
+    gap: 5px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  body.is-game-active .stats p {
+    padding: 5px 7px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  body.is-game-active .game-actions {
+    grid-area: actions;
+    justify-content: stretch;
+    gap: 5px;
+  }
+
+  /* 五顆鈕平分整列寬：390px 扣掉間距約每顆 72px，比橫向那排還好按 */
+  body.is-game-active .game-actions button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 4px;
+    font-size: 0.84rem;
   }
 
   body.is-game-active .canvas-wrap {
     width: 100vw;
-    height: calc(100dvh - 68px);
+    height: calc(100dvh - var(--hud-height));
   }
+}
+
+/* 轉向提示裡那句「其實可以直向玩」的出路，字小一點、不要跟標題搶 */
+.rotate-prompt .rotate-hint {
+  margin-top: 10px;
+  font-size: 0.86rem;
+  opacity: 0.82;
 }
 
 /* 🏆 排行榜 Top 10（0915）。

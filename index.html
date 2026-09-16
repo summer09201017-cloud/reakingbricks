@@ -30,7 +30,7 @@
       <section class="setup-panel" aria-label="主要設定">
         <div class="panel-heading">
           <h2>遊玩設定</h2>
-          <p>手機建議橫向握持，拖曳畫布即可移動板子。</p>
+          <p>手機直向、橫向都能玩：直向可單手，橫向畫面較寬。拖曳畫布即可移動板子。</p>
         </div>
 
         <div class="quick-settings">
@@ -47,6 +47,13 @@
               <option value="easy">休閒</option>
               <option value="normal">標準</option>
               <option value="hard">挑戰</option>
+            </select>
+          </label>
+          <label>
+            畫面方向
+            <select id="screenModeSelect">
+              <option value="auto">自動（直向也能玩）</option>
+              <option value="landscape">固定橫向</option>
             </select>
           </label>
           <label>
@@ -225,7 +232,7 @@
 
         <div class="overlay" id="overlay" aria-live="polite">
           <h2 id="overlayTitle">打磚塊</h2>
-          <p id="overlayText">按開始遊玩進入橫向全螢幕。</p>
+          <p id="overlayText">按開始遊玩進入全螢幕。</p>
           <div class="overlay-stats" id="overlayStats" hidden></div>
           <div class="overlay-actions" id="overlayActions" hidden>
             <button id="resumeBtn" type="button">繼續</button>
@@ -264,6 +271,7 @@
           <div>
             <h2>請將手機轉為橫向</h2>
             <p>橫向後會自動進入倒數，畫面會放大成全螢幕遊玩。</p>
+            <p class="rotate-hint">想直向單手玩？回設定頁把「畫面方向」改成「自動」。</p>
           </div>
         </div>
       </section>

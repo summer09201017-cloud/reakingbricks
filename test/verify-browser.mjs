@@ -170,9 +170,10 @@ const manifest = await page.evaluate(async () => {
   const res = await fetch('manifest.webmanifest');
   return res.ok ? JSON.parse((await res.text()).replace(/^﻿/, '')) : null;
 });
-check(manifest?.orientation === 'landscape', 'manifest 有鎖橫向', String(manifest?.orientation));
+// 0916:直向也能玩之後就不可以再鎖 landscape —— 鎖了,裝成 App 的人連轉都轉不了。
+check(manifest?.orientation === 'any', 'manifest 不鎖方向(直向橫向都能玩)', String(manifest?.orientation));
 
-// 進遊戲畫面（直向時會跳「請轉為橫向」的蓋版，那是對的）
+// 進遊戲畫面（0916 起直向是可以玩的版面，不再跳「請轉為橫向」）
 await page.locator('#startBtn').click();
 await page.waitForTimeout(700);
 
@@ -197,11 +198,135 @@ const smallHud = await page.evaluate(() => {
 });
 check(smallHud.length === 0, '遊戲中 HUD 的鈕都 ≥44px（0916 體檢是 34~40px）', smallHud.join('/'));
 
-const rotateVisible = await page.evaluate(() => {
-  const el = document.getElementById('rotatePrompt');
-  return el ? !el.hidden : null;
+// ── 📱 直向真的玩得動(0916)────────────────────────────────────────────────
+// ★ 這一段取代舊的「直向時出現請轉為橫向蓋版」。只驗「有沒有蓋版」驗不到玩不玩得動:
+//   蓋版拿掉之後才發現 HUD 在 390px 寬底下會橫向溢出,而舊的驗收全程是綠的。
+const portraitPlay = await page.evaluate(() => {
+  const c = document.getElementById('gameCanvas');
+  const r = c.getBoundingClientRect();
+  const hud = document.querySelector('.game-hud');
+  return {
+    promptHidden: document.getElementById('rotatePrompt').hidden,
+    cw: c.width,
+    ch: c.height,
+    logicalAspect: c.height / c.width,
+    cssAspect: r.height / r.width,
+    hudOverflow: hud.scrollWidth - hud.clientWidth,
+    bricks: bricks.length,
+    minX: Math.min(...bricks.map((b) => b.x)),
+    maxX: Math.max(...bricks.map((b) => b.x + b.width)),
+    maxY: Math.max(...bricks.map((b) => b.y + b.height)),
+    paddleTop: paddle.y,
+    paddleW: paddle.width,
+  };
 });
-check(rotateVisible === true, '直向時出現「請轉為橫向」蓋版');
+check(portraitPlay.promptHidden === true, '直向預設不再要求轉橫向');
+check(portraitPlay.ch > portraitPlay.cw, '直向時邏輯畫布是直的', `${portraitPlay.cw}x${portraitPlay.ch}`);
+// 畫布是被 CSS 拉滿視窗的 ⇒ 邏輯長寬比和實際長寬比差太多就是「整面被壓扁」
+check(
+  Math.abs(portraitPlay.logicalAspect - portraitPlay.cssAspect) / portraitPlay.cssAspect < 0.08,
+  '直向畫面沒有被壓扁（邏輯長寬比貼近實際）',
+  `${portraitPlay.logicalAspect.toFixed(2)} vs ${portraitPlay.cssAspect.toFixed(2)}`
+);
+check(portraitPlay.hudOverflow <= 1, '直向 HUD 沒有橫向溢出', String(portraitPlay.hudOverflow));
+check(portraitPlay.bricks > 0, '直向開得出磚塊', String(portraitPlay.bricks));
+check(
+  portraitPlay.minX >= -0.5 && portraitPlay.maxX <= portraitPlay.cw + 0.5,
+  '直向磚牆沒有溢出畫布左右',
+  `${Math.round(portraitPlay.minX)}~${Math.round(portraitPlay.maxX)} / ${portraitPlay.cw}`
+);
+check(
+  portraitPlay.maxY < portraitPlay.paddleTop - 60,
+  '直向磚牆沒有壓到底板',
+  `${Math.round(portraitPlay.maxY)} vs ${Math.round(portraitPlay.paddleTop)}`
+);
+// 直向畫布只有 560 寬,板子若還用橫向的絕對 px 會佔掉四分之一個螢幕 = 難度垮掉
+check(
+  portraitPlay.paddleW < portraitPlay.cw * 0.2,
+  '直向板寬有按比例縮（不到畫布寬的 1/5）',
+  `${Math.round(portraitPlay.paddleW)} / ${portraitPlay.cw}`
+);
+
+// ── 🔄 玩到一半轉手機(0916)────────────────────────────────────────────────
+// ★ 這是直向支援最容易壞、又最不會被發現的一段:座標全是絕對 px,換了版面卻沒搬,
+//   球會留在畫面外、磚塊橫著溢出、板子卡在右邊界 —— 而語法檢查與單元測試全綠。
+await page.mouse.click(195, 500);        // 發球
+await page.waitForTimeout(1200);
+await page.evaluate(() => shiftBricks(2));   // 先壓兩格,順便驗下壓進度會不會被轉向偷走
+
+const outOfBounds = () => page.evaluate(() => ({
+  mode: layoutMode,
+  cw: canvas.width,
+  ch: canvas.height,
+  bricksOut: bricks.filter((b) => b.alive
+    && (b.x < -1 || b.x + b.width > canvas.width + 1 || b.y + b.height > paddle.y)).length,
+  ballsOut: balls.filter((b) => b.x < -1 || b.x > canvas.width + 1 || b.y > canvas.height + 1).length,
+  paddleOut: paddle.x < -1 || paddle.x + paddle.width > canvas.width + 1,
+  paddleW: Math.round(paddle.width),
+  descendRows: state.descendRows,
+  alive: bricks.filter((b) => b.alive).length,
+}));
+
+const beforeTurn = await outOfBounds();
+await page.setViewportSize({ width: 844, height: 390 });
+await page.waitForTimeout(700);
+const afterTurn = await outOfBounds();
+
+check(afterTurn.mode === 'landscape', '轉成橫向後版面跟著換', afterTurn.mode);
+check(
+  afterTurn.bricksOut === 0 && afterTurn.ballsOut === 0 && !afterTurn.paddleOut,
+  '轉向後磚塊/球/板子都還在畫面內',
+  JSON.stringify(afterTurn)
+);
+check(
+  afterTurn.paddleW > beforeTurn.paddleW,
+  '轉向後板寬換成該方向的尺度',
+  `${beforeTurn.paddleW} → ${afterTurn.paddleW}`
+);
+check(
+  afterTurn.descendRows === beforeTurn.descendRows,
+  '轉向不會偷偷把磚塊下壓的進度歸零（等於送一個免費重置）',
+  `${beforeTurn.descendRows} → ${afterTurn.descendRows}`
+);
+check(afterTurn.alive > 0, '轉向後磚塊沒有整批消失', String(afterTurn.alive));
+
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(700);
+const backAgain = await outOfBounds();
+check(backAgain.mode === 'portrait' && backAgain.bricksOut === 0 && backAgain.ballsOut === 0,
+  '轉回直向也一樣乾淨', JSON.stringify(backAgain));
+
+// 跨方向續玩:直向存的檔,在橫向要接得回來(存檔存的是絕對座標)
+// ⚠ hasStartedRun() 要求「真的開始玩了」才寫存檔 ⇒ 先確實打掉一顆磚,不要靠球自己撞到
+await page.evaluate(() => {
+  destroyBrick(bricks.find((b) => b.alive));
+  saveRun();
+});
+const savedLayout = await page.evaluate(() => {
+  const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.run));
+  return { cw: raw.cw, ch: raw.ch, pt: raw.pt, dr: raw.descendRows, v: raw.v };
+});
+check(
+  Number.isFinite(savedLayout.cw) && Number.isFinite(savedLayout.ch) && typeof savedLayout.pt === 'boolean',
+  '續玩存檔有帶「存的時候是什麼版面」',
+  JSON.stringify(savedLayout)
+);
+
+// 舊行為(固定橫向)仍然留著:選了就該跳蓋版
+await page.evaluate(() => {
+  preferences.screenMode = 'landscape';
+  savePreferences();
+  handleViewportChange();
+});
+await page.waitForTimeout(150);
+const rotateVisible = await page.evaluate(() => !document.getElementById('rotatePrompt').hidden);
+check(rotateVisible === true, '選「固定橫向」時直向仍會跳「請轉為橫向」蓋版');
+await page.evaluate(() => {
+  preferences.screenMode = 'auto';
+  savePreferences();
+  handleViewportChange();
+});
+await page.waitForTimeout(150);
 
 if (process.env.SHOT) {
   await page.screenshot({ path: `${SHOT_DIR}/game-portrait.png`, fullPage: false });

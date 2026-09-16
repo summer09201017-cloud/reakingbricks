@@ -48,6 +48,7 @@ const fullscreenBtn = document.getElementById("fullscreenBtn");
 const difficultySelect = document.getElementById("difficultySelect");
 const modeSelect = document.getElementById("modeSelect");
 const themeSelect = document.getElementById("themeSelect");
+const screenModeSelect = document.getElementById("screenModeSelect");
 const songSelect = document.getElementById("songSelect");
 const songSelectInGame = document.getElementById("songSelectInGame");
 const musicToggle = document.getElementById("musicToggle");
@@ -89,11 +90,16 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.3.1";
+const APP_VERSION = "2.4.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-16", items: [
+    "手機直向也能玩了：磚牆、板子、球速與拇指區都依直向重新排過，不再強制要求轉橫向",
+    "設定新增「畫面方向」：自動（直向橫向都能玩）或固定橫向，想維持原本的橫向玩法可以選後者",
+    "玩到一半轉手機不會壞：磚塊、球、寶物與下壓進度會整場搬到新版面，續玩存檔跨方向也接得回來",
+    "首頁在橫向手機上把「開始遊玩」固定在畫面底部，不必盲捲兩個畫面才找得到",
+    "音量拉桿、核取方塊與下拉選單的可按範圍補到 44px",
     "每日挑戰可以做成分享圖卡：把日期、題號、分數、走到第幾關與那一關的磚塊圖案畫成一張 PNG，存檔或直接分享",
     "圖卡與分享文字改印「今天」的成績，不再拿歷來每日最高分去配今天的日期",
     "每日挑戰結算多一顆「成績圖卡」按鈕，打完就能直接做卡",
@@ -150,6 +156,29 @@ const APP_DATE = CHANGELOG[0].date;
 const BALL_RADIUS = 8;
 const BIG_BALL_RADIUS = 13;
 const BASE_CANVAS_HEIGHT = 560;
+// ── 📱 直向版面(0916)──────────────────────────────────────────────────────
+// 打磚塊本來就是直式街機:Breakout / Arkanoid 的原生機台是直立螢幕,手機直握、
+// 單手拇指就能玩,比橫向更接近原型。但「把橫向的數值原封不動塞進直向」一定壞,
+// 因為這個遊戲有三件事是絕對 px:
+//   ① 畫布被 CSS 拉滿整個視窗 ⇒ 邏輯畫布的長寬比必須貼近真實視窗,否則整面被壓扁
+//   ② 直向的落球距離約是橫向的 2.7 倍 ⇒ 同樣球速會慢到讓人「等球」
+//   ③ 板寬是絕對 px ⇒ 在窄畫布上會佔掉四分之一個螢幕,難度整個垮掉
+// ★ 為什麼球/寶物/子彈的「大小」不用縮:短邊固定 560 ⇒ 兩個方向的
+//   邏輯px→CSSpx 比例接近(直向 390/560=0.70、橫向 844/1428=0.59),
+//   絕對 px 的東西在真手機上本來就差不多大。要縮的是「跟場地比例有關」的量:
+//   板寬(佔場地多少比例)與球速(場地變高、飛行距離變長)。
+const PORTRAIT_BASE_WIDTH = 560;          // 直向邏輯畫布寬(固定);高度由視窗長寬比推
+const PORTRAIT_MIN_ASPECT = 1.25;         // 高/寬。iPad 直向 ≈1.33、iPhone ≈2.0
+const PORTRAIT_MAX_ASPECT = 2.1;
+const PORTRAIT_PADDLE_REF_WIDTH = 1100;   // 橫向板寬(164/136/116)是對著這個畫布寬調出來的
+const PORTRAIT_SPEED_SCALE = 1.5;         // ★ 直向手感的主旋鈕:落球距離變 2.7 倍,球速不跟著加就變成等球
+const PORTRAIT_PADDLE_SPEED = 6;          // 鍵盤移動速度(直向畫布只有 560 寬,8 太粗)
+const PORTRAIT_DESCEND_SCALE = 0.6;       // 直向可下壓的格數多一倍 ⇒ 間隔要縮短,壓力才跟橫向相當
+const PADDLE_MIN_WIDTH = 100;             // ← 原本寫死在四處的 clamp(…, 100, 260)
+const PADDLE_MAX_WIDTH = 260;
+const PADDLE_EXPAND_STEP = 34;            // expand 寶物一次加多少(橫向基準)
+const POWERUP_FALL_SPEED = 2.35;
+const BULLET_SPEED = 11.2;
 const PADDLE_HEIGHT = 22;
 const PADDLE_BOTTOM_GAP = 28;
 const TOUCH_DRAG_SENSITIVITY = 1.18;
@@ -188,7 +217,7 @@ const ASSIST_MAX_STACKS = 3;
 //    ★ BOSS 關不下壓:BOSS 已經在砸落石,再加下壓等於兩套壓力疊在一起。
 //    ★ 壓到危險線不是直接 Game Over,而是扣一命並把磚塊推回去 —— 否則復活後
 //      磚塊還在線上,會變成「復活即死」的無限迴圈,一次把所有命吃光。
-const BRICK_ROW_PITCH = 32;          // 24 磚高 + 8 間距,和 createBricks 一致
+// 列距(磚高 + 間隙)不再是常數:直向的磚塊比較高,兩個方向各有一份 ⇒ 看 getBrickRowPitch()。
 const DESCEND_PUSHBACK_ROWS = 3;     // 撞線扣命後把磚塊推回幾格
 const DESCEND_WARN_SEC = 2;          // 下壓前幾秒開始閃警告
 const BOSS_TELEGRAPH_SEC = 0.85;   // 預告線亮多久才真的砸下來
@@ -237,7 +266,7 @@ const STORAGE_KEYS = {
 
 // 💾 續玩存檔(0915)。★ schema 版本:場上物件的形狀一改,舊存檔還原出來就是壞的,
 //    寧可丟掉重來,也不要讓玩家接到一個半壞的局面。改過 brick/ball/powerup 欄位就要 +1。
-const RUN_SAVE_VERSION = 3;
+const RUN_SAVE_VERSION = 4;   // 4:存檔帶上「存的時候是什麼版面」(直向支援),舊存檔的座標沒有方向資訊
 const RUN_SAVE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;   // 超過三天的存檔不留,接回來只會一頭霧水
 
 const DIFFICULTIES = {
@@ -563,6 +592,8 @@ const defaultPreferences = {
   difficulty: "normal",
   mode: "classic",
   theme: "classic",
+  // 📱 auto = 手機怎麼拿就怎麼玩(直向也能玩);landscape = 舊行為,直向時要求轉橫
+  screenMode: "auto",
 };
 
 const TOP_SCORES_MAX = 10;
@@ -612,6 +643,9 @@ const state = {
   bossAttackTimer: 0,
   descendTimer: 0,
   descendShown: false,
+  // ⬇ 已經下壓了幾格。轉手機/改視窗要重排磚塊時,靠它把下壓的位移原樣帶過去,
+  //   否則轉一下手機就把壓力歸零(等於多一個免費的「重置鍵」)。
+  descendRows: 0,
   mode: preferences.mode in MODES ? preferences.mode : "classic",
   difficulty: preferences.difficulty in DIFFICULTIES ? preferences.difficulty : "normal",
   theme: preferences.theme in THEMES ? preferences.theme : "classic",
@@ -846,6 +880,13 @@ function serializeRun() {
     assistStacks: state.assistStacks,
     assistWidthBonus: state.assistWidthBonus,
     descendShown: state.descendShown,
+    descendRows: state.descendRows,
+    // 📱 存檔當時的版面。換方向(或換一台螢幕比例不同的裝置)續玩時,
+    //    要靠這三個數字把座標搬過來,否則球會在畫面外、磚塊會橫著溢出。
+    cw: canvas.width,
+    ch: canvas.height,
+    pt: isPortraitLayout(),
+    pb: getPaddleBaseWidth(),
     timers: {
       gun: state.gunTimer,
       bigBall: state.bigBallTimer,
@@ -958,6 +999,7 @@ function restoreRun(saved) {
   state.assistStacks = clamp(Math.floor(saved.assistStacks) || 0, 0, ASSIST_MAX_STACKS);
   state.assistWidthBonus = Math.max(0, Number(saved.assistWidthBonus) || 0);
   state.descendShown = !!saved.descendShown;
+  state.descendRows = Math.round(Number(saved.descendRows) || 0);
   state.restartCountdown = 0;
   state.shake = 0;
   state.hitStop = 0;
@@ -1008,9 +1050,11 @@ function restoreRun(saved) {
     sessionStats.totalBricks = bricks.length;
   }
 
-  paddle.width = clamp(Number(saved.paddle && saved.paddle.width) || getDifficultyConfig().paddleWidth, 100, 260);
+  // ⚠ 這裡先原封不動吃下存檔的數值(它是「存檔當時那個版面」的單位),
+  //   等 resizeCanvasForScreen() 帶著 pendingRestoreLayout 換算過去再夾上下限。
+  paddle.width = Math.max(1, Number(saved.paddle && saved.paddle.width) || getPaddleBaseWidth());
   positionPaddleY();
-  paddle.x = clamp(Number(saved.paddle && saved.paddle.x) || 0, 0, canvas.width - paddle.width);
+  paddle.x = Math.max(0, Number(saved.paddle && saved.paddle.x) || 0);
 
   setBallRadius(state.bigBallTimer > 0 ? BIG_BALL_RADIUS : BALL_RADIUS);
   balls = saved.balls.slice(0, MAX_BALLS).map((ball) => ({
@@ -1034,7 +1078,7 @@ function restoreRun(saved) {
       return {
         x: Number(row.x) || 0,
         y: Number(row.y) || 0,
-        vy: 2.35,
+        vy: getPowerupFallSpeed(),
         size: 20,
         type: meta.type,
         label: meta.label,
@@ -1046,6 +1090,15 @@ function restoreRun(saved) {
   bullets = [];
   bossRocks = [];
   floatingTexts = [];
+
+  // 📱 把「存檔當時的版面」交給下一次 resizeCanvasForScreen(),由它換算座標。
+  //    存檔可能來自另一個方向、另一台螢幕比例不同的裝置。
+  pendingRestoreLayout = {
+    width: Number(saved.cw) || canvas.width,
+    height: Number(saved.ch) || canvas.height,
+    speedScale: saved.pt ? PORTRAIT_SPEED_SCALE : 1,
+    paddleBase: Number(saved.pb) || getPaddleBaseWidth(),
+  };
 
   applyTheme();
   syncSettingsControls();
@@ -1720,6 +1773,90 @@ function isLandscapeViewport() {
   return window.innerWidth >= window.innerHeight;
 }
 
+// ── 📱 版面模式 ───────────────────────────────────────────────────────────
+let layoutMode = "landscape";        // "landscape" | "portrait",由 resizeCanvasForScreen() 決定
+let pendingRestoreLayout = null;     // 從存檔還原時,存檔當時的版面(用來把座標搬過來)
+
+function isPortraitLayout() {
+  return layoutMode === "portrait";
+}
+
+// 玩家可以鎖回舊的「固定橫向」;預設是自動。
+function prefersForcedLandscape() {
+  return preferences.screenMode === "landscape";
+}
+
+function shouldUsePortraitLayout() {
+  return !prefersForcedLandscape() && window.innerHeight > window.innerWidth;
+}
+
+// 速度類(球、寶物、子彈、落石)的統一縮放:直向場地高很多,絕對 px/frame 要跟著放大
+function getSpeedScale() {
+  return isPortraitLayout() ? PORTRAIT_SPEED_SCALE : 1;
+}
+
+// 板子相關的縮放:板寬的意義是「佔場地寬的幾分之幾」,不是實際幾公釐,
+// 所以直向要按畫布寬等比例縮,否則 136px 會佔掉 560 寬畫布的四分之一。
+function getPaddleScale() {
+  return isPortraitLayout() ? canvas.width / PORTRAIT_PADDLE_REF_WIDTH : 1;
+}
+
+function getPaddleBaseWidth() {
+  return getDifficultyConfig().paddleWidth * getPaddleScale();
+}
+
+function getPaddleMinWidth() {
+  return PADDLE_MIN_WIDTH * getPaddleScale();
+}
+
+function getPaddleMaxWidth() {
+  return PADDLE_MAX_WIDTH * getPaddleScale();
+}
+
+function getAssistPaddleBonus() {
+  return ASSIST_PADDLE_BONUS * getPaddleScale();
+}
+
+function getPaddleExpandStep() {
+  return PADDLE_EXPAND_STEP * getPaddleScale();
+}
+
+function getPaddleSpeed() {
+  return isPortraitLayout() ? PORTRAIT_PADDLE_SPEED : 8;
+}
+
+// 板子離底邊多遠。直向留一大塊「拇指區」:板子貼著螢幕最底邊的話,
+// 單手直握時手指會擋住板子本身,玩家等於看不到自己接得準不準。
+function getPaddleBottomGap() {
+  return isPortraitLayout() ? Math.round(canvas.height * 0.085) : PADDLE_BOTTOM_GAP;
+}
+
+function getPowerupFallSpeed() {
+  return POWERUP_FALL_SPEED * getSpeedScale();
+}
+
+// 下壓間隔:直向從磚牆到危險線的格數大約是橫向的兩倍,
+// 用同一個秒數等於直向幾乎不會被壓到 ⇒ 縮短間隔讓兩邊的壓力相當。
+function getDescendInterval() {
+  const base = getDifficultyConfig().descendSec;
+  return isPortraitLayout() ? base * PORTRAIT_DESCEND_SCALE : base;
+}
+
+// 這一關的磚塊是不是 BOSS 版面(重排時要用另一組幾何)。
+// 用關卡編號推而不是看場上還有沒有 BOSS —— BOSS 被打掉後護衛磚還在。
+function isBossLevelLayout() {
+  return !state.customRows && state.level > 1 && state.level % BOSS_INTERVAL === 0;
+}
+
+function captureLayoutSnapshot() {
+  return {
+    width: canvas.width,
+    height: canvas.height,
+    speedScale: getSpeedScale(),
+    paddleBase: getPaddleBaseWidth(),
+  };
+}
+
 function resetStarField() {
   for (let i = 0; i < stars.length; i += 1) {
     stars[i].x = Math.random() * canvas.width;
@@ -1727,28 +1864,143 @@ function resetStarField() {
   }
 }
 
+// 邏輯畫布的尺寸。★ 畫布是被 CSS 拉滿整個視窗的(width/height:100%),
+// 所以「邏輯長寬比」必須貼近「真實視窗長寬比」,差太多整個畫面就被壓扁。
+// 兩個方向的共同規則:**短邊固定 560**,長邊由視窗比例推(夾在合理範圍內)。
 function resizeCanvasForScreen() {
   if (!isGameScreenActive) {
     return;
   }
 
+  const prev = pendingRestoreLayout || captureLayoutSnapshot();
+  pendingRestoreLayout = null;
+
   const hudHeight = gameHud ? gameHud.getBoundingClientRect().height : 0;
   const availableHeight = Math.max(320, window.innerHeight - hudHeight);
-  const aspect = clamp(window.innerWidth / availableHeight, 1.45, 2.55);
-  const nextWidth = Math.round(BASE_CANVAS_HEIGHT * aspect);
+  const portrait = shouldUsePortraitLayout();
 
-  if (canvas.width === nextWidth && canvas.height === BASE_CANVAS_HEIGHT) {
+  let nextWidth;
+  let nextHeight;
+  if (portrait) {
+    const aspect = clamp(availableHeight / window.innerWidth, PORTRAIT_MIN_ASPECT, PORTRAIT_MAX_ASPECT);
+    nextWidth = PORTRAIT_BASE_WIDTH;
+    nextHeight = Math.round(PORTRAIT_BASE_WIDTH * aspect);
+  } else {
+    const aspect = clamp(window.innerWidth / availableHeight, 1.45, 2.55);
+    nextWidth = Math.round(BASE_CANVAS_HEIGHT * aspect);
+    nextHeight = BASE_CANVAS_HEIGHT;
+  }
+
+  const nextMode = portrait ? "portrait" : "landscape";
+  // 手機網址列收合會讓 innerHeight 抖幾 px:2px 以內不重排,免得球每幀被搬一次
+  const settled = layoutMode === nextMode
+    && Math.abs(canvas.width - nextWidth) <= 2
+    && Math.abs(canvas.height - nextHeight) <= 2;
+  if (settled) {
     return;
   }
 
-  canvas.width = nextWidth;
-  canvas.height = BASE_CANVAS_HEIGHT;
+  layoutMode = nextMode;
+  if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
+    resetStarField();
+  }
   positionPaddleY();
-  resetStarField();
+  rescaleWorld(prev);
 }
 
+// 版面(方向或尺寸)變了,就把磚塊照 row/col 重排。
+// ★ 用 row/col 重算而不是按比例縮:磚塊是格狀的,等比例縮過去會和新版面的
+//   邊距/間隙對不齊,幾關之後整面慢慢走鐘。下壓的位移用 state.descendRows 帶過去。
+function relayoutBricks() {
+  if (bricks.length === 0) {
+    return;
+  }
+
+  const boss = isBossLevelLayout();
+  const layout = getBrickLayout();
+  const pitch = getBrickRowPitch();
+  const drop = state.descendRows * pitch;
+  const bl = boss ? getBossLayout() : null;
+
+  for (let i = 0; i < bricks.length; i += 1) {
+    const brick = bricks[i];
+    if (boss && brick.special === "boss") {
+      brick.width = bl.bossWidth;
+      brick.height = bl.bossHeight;
+      brick.baseX = bl.bossX;
+      brick.x = bl.bossX;
+      brick.y = bl.top + drop;
+    } else if (boss) {
+      const guardRow = Math.max(0, brick.row - 1);
+      brick.width = bl.guardWidth;
+      brick.height = bl.guardHeight;
+      brick.baseX = bl.guardLeft + brick.col * (bl.guardWidth + bl.gap);
+      brick.x = brick.baseX;
+      brick.y = bl.guardTop + guardRow * (bl.guardHeight + bl.gap) + drop;
+    } else {
+      brick.width = layout.brickWidth;
+      brick.height = layout.brickHeight;
+      brick.baseX = layout.side + brick.col * (layout.brickWidth + layout.gap);
+      brick.x = brick.baseX;
+      brick.y = layout.top + brick.row * pitch + drop;
+    }
+  }
+}
+
+// 轉手機、拉視窗、或從「另一個方向存的存檔」還原時,把整個場面搬到新座標系。
+// 不搬的話:球留在畫面外、板子超出右緣、磚塊橫著溢出 —— 轉一下手機整局報銷。
+function rescaleWorld(prev) {
+  if (!prev || !prev.width || !prev.height) {
+    return;
+  }
+
+  const sx = canvas.width / prev.width;
+  const sy = canvas.height / prev.height;
+  const speedRatio = getSpeedScale() / (prev.speedScale || 1);
+  const paddleRatio = getPaddleBaseWidth() / (prev.paddleBase || getPaddleBaseWidth());
+  if (sx === 1 && sy === 1 && speedRatio === 1 && paddleRatio === 1) {
+    return;
+  }
+
+  relayoutBricks();
+
+  paddle.width = clamp(paddle.width * paddleRatio, getPaddleMinWidth(), getPaddleMaxWidth());
+  state.assistWidthBonus *= paddleRatio;
+  paddle.speed = getPaddleSpeed();
+  positionPaddleY();
+  paddle.x = clamp(paddle.x * sx, 0, canvas.width - paddle.width);
+
+  for (let i = 0; i < balls.length; i += 1) {
+    const ball = balls[i];
+    ball.x = clamp(ball.x * sx, ball.radius, canvas.width - ball.radius);
+    ball.y = clamp(ball.y * sy, ball.radius, canvas.height - ball.radius);
+    ball.vx *= speedRatio;
+    ball.vy *= speedRatio;
+  }
+  syncStuckBallsWithPaddle();
+
+  for (let i = 0; i < powerups.length; i += 1) {
+    powerups[i].x = clamp(powerups[i].x * sx, 0, canvas.width);
+    powerups[i].y *= sy;
+    powerups[i].vy = getPowerupFallSpeed();
+  }
+
+  for (let i = 0; i < bossRocks.length; i += 1) {
+    bossRocks[i].x = clamp(bossRocks[i].x * sx, 0, canvas.width);
+    bossRocks[i].y *= sy;
+    bossRocks[i].vy = BOSS_ROCK_SPEED * getSpeedScale() + state.level * 0.05;
+  }
+
+  // 子彈只活幾幀,換版面時清掉比搬過去省事,而且沒有人看得出來
+  bullets = [];
+}
+
+// 只有玩家自己選了「固定橫向」時才擋直向。預設(auto)直向是可以玩的版面,
+// 擋下去等於把一個支援得好好的模式關掉。
 function shouldShowRotatePrompt() {
-  return isGameScreenActive && isTouchDevice() && !isLandscapeViewport();
+  return isGameScreenActive && prefersForcedLandscape() && isTouchDevice() && !isLandscapeViewport();
 }
 
 function updateOrientationPrompt() {
@@ -1809,14 +2061,14 @@ async function toggleFullscreen() {
       await document.exitFullscreen();
       return;
     }
-    await requestLandscapeFullscreen();
+    await requestGameFullscreen();
   } catch {
     // 使用者手勢之外呼叫、或被瀏覽器政策擋掉:靜默,不要弄壞遊戲。
   }
   updateFullscreenButton();
 }
 
-async function requestLandscapeFullscreen() {
+async function requestGameFullscreen() {
   const root = document.documentElement;
 
   try {
@@ -1825,6 +2077,19 @@ async function requestLandscapeFullscreen() {
     }
   } catch {
     // Some mobile browsers only allow fullscreen from installed PWA mode.
+  }
+
+  // ★ 只有玩家選了「固定橫向」才鎖方向。auto 模式鎖下去等於強迫轉向,
+  //   直向明明玩得動 —— 而且鎖了之後玩家自己轉回直向也會被扳回來。
+  if (!prefersForcedLandscape()) {
+    try {
+      if (screen.orientation && screen.orientation.unlock) {
+        screen.orientation.unlock();
+      }
+    } catch {
+      // Orientation unlock is best effort.
+    }
+    return;
   }
 
   try {
@@ -1853,6 +2118,7 @@ async function showSetupScreen() {
   pendingStartAfterLandscape = false;
   pendingNewGameAfterLandscape = false;
   pendingResumeAfterLandscape = false;
+  pendingRestoreLayout = null;
   isGameScreenActive = false;
   state.running = false;
   stopMusic();
@@ -1889,7 +2155,7 @@ async function startGameFromSetup() {
   setInstallHint("");
   clearSavedRun();   // 按「開始遊玩」就是要開新局,舊存檔當場作廢免得之後誤接
   showGameScreen();
-  await requestLandscapeFullscreen();
+  await requestGameFullscreen();
   pendingNewGameAfterLandscape = true;
   updateOrientationPrompt();
 }
@@ -1906,7 +2172,7 @@ async function resumeSavedRun() {
   setInstallHint("");
   restoreRun(saved);
   showGameScreen();
-  await requestLandscapeFullscreen();
+  await requestGameFullscreen();
   pendingResumeAfterLandscape = true;
   updateOrientationPrompt();
 }
@@ -2029,7 +2295,7 @@ async function playCustomLevel() {
   unlockAudioFromGesture();
   setInstallHint("");
   showGameScreen();
-  await requestLandscapeFullscreen();
+  await requestGameFullscreen();
   pendingNewGameAfterLandscape = true;
   updateOrientationPrompt();
 }
@@ -2084,6 +2350,9 @@ function syncSettingsControls() {
   difficultySelect.value = state.difficulty;
   modeSelect.value = state.mode;
   themeSelect.value = state.theme;
+  if (screenModeSelect) {
+    screenModeSelect.value = prefersForcedLandscape() ? "landscape" : "auto";
+  }
   songSelect.value = preferences.song in SONGS ? preferences.song : "arcade";
   songSelectInGame.value = preferences.song in SONGS ? preferences.song : "arcade";
   applyTheme();
@@ -2191,7 +2460,7 @@ function setBallRadius(radius) {
 }
 
 function positionPaddleY() {
-  paddle.y = canvas.height - PADDLE_BOTTOM_GAP - paddle.height;
+  paddle.y = canvas.height - getPaddleBottomGap() - paddle.height;
 }
 
 function clearTemporaryPowerups() {
@@ -2306,8 +2575,27 @@ function getLevelTitle() {
 // 磚塊的版面幾何。自訂關卡與內建圖案共用同一組數字，兩邊才不會慢慢走鐘。
 function getBrickLayout() {
   const cols = PATTERN_COLS;
-  const side = 36;
   const gap = 8;
+
+  if (isPortraitLayout()) {
+    // 直向:畫布窄很多 ⇒ 邊距收窄,磚塊才不會細成一條;畫布高很多 ⇒ 列距拉高,
+    // 磚牆才不會縮在頂端一小條。但磚高不超過磚寬的 0.8 倍 —— 打磚塊的磚是橫的。
+    const side = 16;
+    const brickWidth = (canvas.width - side * 2 - gap * (cols - 1)) / cols;
+    const brickHeight = clamp(Math.round(canvas.height * 0.038), 24, Math.round(brickWidth * 0.85));
+    return {
+      cols,
+      side,
+      gap,
+      // 磚牆擺在偏上但不貼頂:直向只有 5~7 列,貼著頂端會變成「上面一小條、下面一大片空」。
+      // 往下挪到 14% 之後,上方留給進度條、下方的落球區也不會誇張到像沒畫完。
+      top: Math.round(canvas.height * 0.14),
+      brickHeight,
+      brickWidth,
+    };
+  }
+
+  const side = 36;
   return {
     cols,
     side,
@@ -2315,6 +2603,38 @@ function getBrickLayout() {
     top: 70,
     brickHeight: 24,
     brickWidth: (canvas.width - side * 2 - gap * (cols - 1)) / cols,
+  };
+}
+
+// 一列佔多高(磚高 + 間隙)。下壓、危險線與重排都吃這一個數字,
+// 兩個方向才不會各自有一份會慢慢走鐘的列距。
+function getBrickRowPitch() {
+  const layout = getBrickLayout();
+  return layout.brickHeight + layout.gap;
+}
+
+// BOSS 關的版面幾何。和 getBrickLayout() 同樣的理由:createBossBricks() 與
+// relayoutBricks() 共用同一份,轉手機重排時 BOSS 才不會跑掉。
+function getBossLayout(level = state.level) {
+  const gap = 8;
+  const guardCols = 8;
+  const portrait = isPortraitLayout();
+  const guardLeft = portrait ? 20 : 72;
+  const bossHeight = portrait ? 46 : 54;
+  const top = portrait ? Math.round(canvas.height * 0.085) : 78;
+  const bossWidth = Math.min(canvas.width - (portrait ? 100 : 120), 430 + level * 18);
+  const guardHeight = 22;
+  return {
+    gap,
+    guardCols,
+    guardLeft,
+    top,
+    bossHeight,
+    bossWidth,
+    bossX: (canvas.width - bossWidth) * 0.5,
+    guardWidth: (canvas.width - guardLeft * 2 - gap * (guardCols - 1)) / guardCols,
+    guardHeight,
+    guardTop: top + bossHeight + 28,
   };
 }
 
@@ -2363,6 +2683,7 @@ function buildBricksFromRows(rows, options = {}) {
 }
 
 function createBricks(level) {
+  state.descendRows = 0;   // 新的一關重新排版,下壓的累計要跟著歸零
   // 自訂關卡：整局就是玩家畫的那一張，不接內建圖案、也不出 BOSS。
   if (state.customRows) {
     state.levelName = "自訂關卡";
@@ -2406,14 +2727,8 @@ function createBricks(level) {
 
 function createBossBricks(level) {
   const palette = getThemeConfig().palette;
-  const bossWidth = Math.min(canvas.width - 120, 430 + level * 18);
-  const bossHeight = 54;
-  const bossX = (canvas.width - bossWidth) * 0.5;
-  const top = 78;
-  const guardCols = 8;
-  const gap = 8;
-  const guardWidth = (canvas.width - 72 * 2 - gap * (guardCols - 1)) / guardCols;
-  const guardHeight = 22;
+  const bl = getBossLayout(level);
+  const { bossWidth, bossHeight, bossX, top, guardCols, gap, guardWidth, guardHeight } = bl;
   const bossHp = 10 + level * 2 + getDifficultyConfig().hpBonus * 3;
 
   bricks = [{
@@ -2436,8 +2751,8 @@ function createBossBricks(level) {
   for (let row = 0; row < 2; row += 1) {
     for (let col = 0; col < guardCols; col += 1) {
       const special = ["split", "speed", "bounce", "steel"][Math.floor(random() * 4)];
-      const baseX = 72 + col * (guardWidth + gap);
-      const baseY = top + bossHeight + 28 + row * (guardHeight + gap);
+      const baseX = bl.guardLeft + col * (guardWidth + gap);
+      const baseY = bl.guardTop + row * (guardHeight + gap);
       const hp = Math.min(4, 1 + Math.floor(level / 3) + getDifficultyConfig().hpBonus);
       bricks.push({
         x: baseX,
@@ -2480,10 +2795,12 @@ function resetBallsOnPaddle() {
 }
 
 function launchBall(ball) {
-  const baseSpeed = getDifficultyConfig().ballSpeed + (state.level - 1) * 0.35;
+  const scale = getSpeedScale();
+  const baseSpeed = (getDifficultyConfig().ballSpeed + (state.level - 1) * 0.35) * scale;
   const horizontal = (random() * 0.8 + 0.55) * (random() < 0.5 ? -1 : 1);
   ball.vx = baseSpeed * horizontal;
-  ball.vy = -Math.sqrt(Math.max(4, baseSpeed * baseSpeed - ball.vx * ball.vx));
+  // 下限是「速度的平方」,所以縮放要平方一次
+  ball.vy = -Math.sqrt(Math.max(4 * scale * scale, baseSpeed * baseSpeed - ball.vx * ball.vx));
   ball.stuck = false;
 }
 
@@ -2507,6 +2824,7 @@ function restartGame(options = {}) {
   state.comboTimer = 0;
   state.assistStacks = 0;
   state.assistWidthBonus = 0;
+  state.descendRows = 0;
   sessionStats = createSessionStats();
   sessionStats.highestLevel = 1;
   powerupSpawnCounts = createPowerupCounter();
@@ -2515,7 +2833,8 @@ function restartGame(options = {}) {
   stopMusic();
   resetRandomSource();
 
-  paddle.width = getDifficultyConfig().paddleWidth;
+  paddle.width = getPaddleBaseWidth();
+  paddle.speed = getPaddleSpeed();
   powerups = [];
   bossRocks = [];
   state.bossAttackTimer = 0;
@@ -2608,7 +2927,7 @@ function applyAssistIfStruggling() {
     return false;
   }
   // 上限沿用 expand 寶物的 260,避免板子寬到整個畫面
-  const widened = clamp(paddle.width + ASSIST_PADDLE_BONUS, 100, 260);
+  const widened = clamp(paddle.width + getAssistPaddleBonus(), getPaddleMinWidth(), getPaddleMaxWidth());
   if (widened === paddle.width) {
     return false;
   }
@@ -2715,7 +3034,7 @@ function nextLevel() {
   sessionStats.levelLivesLost = 0;
   // 輔助只針對「卡住的那一關」：過關就把加寬收回，否則整局會愈玩愈簡單、分數也失去意義。
   // 只扣自己加的那一段，玩家吃到的 expand 寶物原封不動保留。
-  paddle.width = clamp(paddle.width - state.assistWidthBonus, 100, 260);
+  paddle.width = clamp(paddle.width - state.assistWidthBonus, getPaddleMinWidth(), getPaddleMaxWidth());
   paddle.x = clamp(paddle.x, 0, canvas.width - paddle.width);
   state.assistWidthBonus = 0;
   state.assistStacks = 0;
@@ -2812,10 +3131,12 @@ function isDescendActive() {
 
 // 整面往下移 rows 格(負數 = 往上推回去)
 function shiftBricks(rows) {
-  const dy = rows * BRICK_ROW_PITCH;
+  const dy = rows * getBrickRowPitch();
   for (let i = 0; i < bricks.length; i += 1) {
     bricks[i].y += dy;
   }
+  // 記「累計壓了幾格」而不是只改 y:轉手機要重排時,才知道要往下補多少
+  state.descendRows += rows;
 }
 
 // 最低的那顆活磚的底緣
@@ -2835,7 +3156,7 @@ function updateBrickDescent(deltaSec) {
     return;
   }
 
-  const interval = getDifficultyConfig().descendSec;
+  const interval = getDescendInterval();
   if (state.descendTimer <= 0) {
     state.descendTimer = interval;
     return;
@@ -2872,7 +3193,7 @@ function drawDangerLine() {
 
   const y = getDangerLineY();
   const lowest = getLowestBrickBottom();
-  const gapRows = lowest > -Infinity ? (y - lowest) / BRICK_ROW_PITCH : 99;
+  const gapRows = lowest > -Infinity ? (y - lowest) / getBrickRowPitch() : 99;
   const soon = state.descendTimer > 0 && state.descendTimer <= DESCEND_WARN_SEC;
   // 剩一格以內、或即將下壓時閃爍加粗,讓危險「看得見」而不只是數字
   const urgent = gapRows <= 1.2 || soon;
@@ -2924,7 +3245,7 @@ function spawnPowerup(brick) {
   powerups.push({
     x: brick.x + brick.width * 0.5,
     y: brick.y + brick.height * 0.5,
-    vy: 2.35,
+    vy: getPowerupFallSpeed(),
     size: 20,
     type: pick.type,
     label: pick.label,
@@ -2979,7 +3300,7 @@ function spawnSplitBallsFromBrick(brick, count = 2) {
     return 0;
   }
 
-  const speed = Math.max(4.2, getDifficultyConfig().ballSpeed + state.level * 0.12);
+  const speed = Math.max(4.2, getDifficultyConfig().ballSpeed + state.level * 0.12) * getSpeedScale();
   let created = 0;
   const spread = 1.1;
   for (let i = 0; i < count; i += 1) {
@@ -3033,9 +3354,10 @@ function createSplitBallsFrom(source, requestedCount = 2) {
       continue;
     }
 
+    const minUp = 0.9 * getSpeedScale();
     let vy = rotated.vy;
-    if (vy > -0.9) {
-      vy = -Math.abs(vy) - 0.9;
+    if (vy > -minUp) {
+      vy = -Math.abs(vy) - minUp;
     }
 
     balls.push(createBall(source.x, source.y, false, rotated.vx, vy));
@@ -3051,7 +3373,7 @@ function applyPowerup(powerup) {
   vibrate(25);
 
   if (powerup.type === "expand") {
-    paddle.width = clamp(paddle.width + 34, 100, 260);
+    paddle.width = clamp(paddle.width + getPaddleExpandStep(), getPaddleMinWidth(), getPaddleMaxWidth());
     paddle.x = clamp(paddle.x, 0, canvas.width - paddle.width);
     spawnFloatingText("板子變長", powerup.x, paddle.y - 12, "#98f5b4");
   } else if (powerup.type === "bigball") {
@@ -3183,7 +3505,7 @@ function handleWallCollision(ball) {
     if (state.shieldCharges > 0) {
       state.shieldCharges -= 1;
       ball.y = canvas.height - ball.radius - 8;
-      ball.vy = -Math.max(5.2, Math.abs(ball.vy) * 0.92);
+      ball.vy = -Math.max(5.2 * getSpeedScale(), Math.abs(ball.vy) * 0.92);
       ball.vx += (random() - 0.5) * 1.2;
       spawnFloatingText(`護盾擋下 x${state.shieldCharges}`, canvas.width * 0.5, canvas.height - 42, "#67e8f9");
       playBrickHitSound();
@@ -3224,7 +3546,7 @@ function handlePaddleCollision(ball) {
   }
 
   const hitPosition = (ball.x - (hitRect.x + hitRect.width * 0.5)) / (hitRect.width * 0.5);
-  const speed = Math.min(9.8, Math.hypot(ball.vx, ball.vy) * 1.02);
+  const speed = Math.min(9.8 * getSpeedScale(), Math.hypot(ball.vx, ball.vy) * 1.02);
   const angle = hitPosition * (Math.PI / 3);
 
   ball.vx = speed * Math.sin(angle);
@@ -3403,8 +3725,9 @@ function fireBullets() {
   }
 
   const y = paddle.y - 6;
-  bullets.push({ x: paddle.x + 14, y, w: 4, h: 13, vy: -11.2 });
-  bullets.push({ x: paddle.x + paddle.width - 14, y, w: 4, h: 13, vy: -11.2 });
+  const bulletVy = -BULLET_SPEED * getSpeedScale();
+  bullets.push({ x: paddle.x + 14, y, w: 4, h: 13, vy: bulletVy });
+  bullets.push({ x: paddle.x + paddle.width - 14, y, w: 4, h: 13, vy: bulletVy });
   sessionStats.shotsFired += 2;
   state.shotCooldown = AUTO_FIRE_INTERVAL;
   updateHud();
@@ -3486,7 +3809,7 @@ function spawnBossRock(boss) {
   bossRocks.push({
     x: targetX,
     y: boss.y + boss.height * 0.5,
-    vy: BOSS_ROCK_SPEED + state.level * 0.05,
+    vy: BOSS_ROCK_SPEED * getSpeedScale() + state.level * 0.05,
     telegraph: BOSS_TELEGRAPH_SEC,
   });
 }
@@ -4603,9 +4926,16 @@ window.addEventListener("blur", () => {
   keys.right = false;
 });
 
-window.addEventListener("resize", updateOrientationPrompt);
+// 轉手機、拉視窗、網址列收合都會走到這裡:先重排版面,再決定要不要顯示轉向提示。
+// ★ 舊版只更新提示、不重排畫布 —— 因為那時直向根本不能玩,轉了也沒東西要搬。
+function handleViewportChange() {
+  resizeCanvasForScreen();
+  updateOrientationPrompt();
+}
+
+window.addEventListener("resize", handleViewportChange);
 window.addEventListener("orientationchange", () => {
-  window.setTimeout(updateOrientationPrompt, 180);
+  window.setTimeout(handleViewportChange, 180);
 });
 
 canvas.addEventListener("mousemove", (event) => {
@@ -4820,6 +5150,16 @@ themeSelect.addEventListener("change", () => {
   refreshBrickTheme();
   updateHud();
 });
+
+if (screenModeSelect) {
+  screenModeSelect.addEventListener("change", () => {
+    preferences.screenMode = screenModeSelect.value === "landscape" ? "landscape" : "auto";
+    savePreferences();
+    syncSettingsControls();
+    // 在遊戲中改的話,當場換版面(不用退出重進)
+    handleViewportChange();
+  });
+}
 
 songSelect.addEventListener("change", () => {
   updateSongPreference(songSelect.value);
