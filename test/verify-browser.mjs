@@ -247,6 +247,56 @@ check(
   `${Math.round(portraitPlay.paddleW)} / ${portraitPlay.cw}`
 );
 
+// ── 🎚 板子長度五段(0917)────────────────────────────────────────────────────
+// 使用者原話:「打磚塊手機版直向的下面檔板,能否可以選擇長度?想要長一點就會容易一點」。
+// ★ 這一段刻意走**真的 UI 路徑**(打開遊戲中的設定、用下拉改),而不是直接改 preferences:
+//   只驗公式的話,「下拉根本點不到 / 藏在一顆叫『音效』的鈕後面沒人找得到」都會是綠的。
+const lenBefore = await page.evaluate(() => paddle.width);
+await page.locator('#settingsBtn').click();
+await page.waitForTimeout(200);
+const lenSelect = await page.evaluate(() => {
+  const el = document.getElementById('paddleSizeSelectInGame');
+  if (!el) return { exists: false, visible: false, h: 0 };
+  const r = el.getBoundingClientRect();
+  return { exists: true, visible: r.width > 0 && r.height > 0, h: Math.round(r.height) };
+});
+check(lenSelect.exists && lenSelect.visible, '遊戲中的設定裡就有「板子長度」(不必退出重來)');
+check(lenSelect.h >= 44, '板子長度下拉的觸控高度 ≥44px', String(lenSelect.h));
+
+await page.selectOption('#paddleSizeSelectInGame', 'xl');
+await page.waitForTimeout(200);
+const lenLong = await page.evaluate(() => ({
+  w: paddle.width,
+  x: paddle.x,
+  cw: document.getElementById('gameCanvas').width,
+  label: document.getElementById('modeLabel').textContent,
+  stored: JSON.parse(localStorage.getItem(STORAGE_KEYS.preferences) || '{}').paddleSize,
+  ballsOnPaddle: balls.filter((b) => b.stuck).every((b) => b.x >= paddle.x && b.x <= paddle.x + paddle.width),
+}));
+check(lenLong.w > lenBefore * 1.5, '選「超長」板子當場變長', `${Math.round(lenBefore)} → ${Math.round(lenLong.w)}`);
+check(lenLong.x >= -0.5 && lenLong.x + lenLong.w <= lenLong.cw + 0.5, '變長之後沒有凸出畫布',
+  `x=${Math.round(lenLong.x)} w=${Math.round(lenLong.w)} / ${lenLong.cw}`);
+check(lenLong.ballsOnPaddle === true, '黏在板上的球跟著板子一起走');
+check(lenLong.stored === 'xl', '板長寫進偏好(重開仍在)', String(lenLong.stored));
+check(/板超長/.test(lenLong.label), 'HUD 標題標出非預設板長(分數不會被誤會)', lenLong.label);
+
+// ★ 這一項是本輪真正的地雷:板寬最後會走 clamp(…, min, max),下限本來寫死 100 ⇒
+//   標準難度選「極短」是 136×0.7=95.2,會被悄悄夾回去,選單看起來有反應、板子卻沒變短。
+await page.selectOption('#paddleSizeSelectInGame', 'xs');
+await page.waitForTimeout(200);
+const lenShort = await page.evaluate(() => paddle.width);
+check(lenShort < lenBefore * 0.8, '選「極短」真的變短(沒有被寫死的下限夾回去)',
+  `${Math.round(lenBefore)} → ${Math.round(lenShort)}`);
+
+await page.selectOption('#paddleSizeSelectInGame', 'm');
+await page.waitForTimeout(200);
+const lenBack = await page.evaluate(() => ({ w: paddle.width, label: document.getElementById('modeLabel').textContent }));
+check(Math.abs(lenBack.w - lenBefore) < 1, '改回標準會回到原來的寬度',
+  `${Math.round(lenBack.w)} vs ${Math.round(lenBefore)}`);
+check(!/板/.test(lenBack.label), '標準板長不會在標題留下多餘標記', lenBack.label);
+await page.locator('#resumeBtn').click();
+await page.waitForTimeout(200);
+
 // ── 🔄 玩到一半轉手機(0916)────────────────────────────────────────────────
 // ★ 這是直向支援最容易壞、又最不會被發現的一段:座標全是絕對 px,換了版面卻沒搬,
 //   球會留在畫面外、磚塊橫著溢出、板子卡在右邊界 —— 而語法檢查與單元測試全綠。

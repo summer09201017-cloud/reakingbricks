@@ -50,6 +50,16 @@
             </select>
           </label>
           <label>
+            板子長度
+            <select id="paddleSizeSelect">
+              <option value="xs">極短（最難）</option>
+              <option value="s">短（較難）</option>
+              <option value="m">標準</option>
+              <option value="l">長（較容易）</option>
+              <option value="xl">超長（最容易）</option>
+            </select>
+          </label>
+          <label>
             畫面方向
             <select id="screenModeSelect">
               <option value="auto">自動（直向也能玩）</option>
@@ -83,6 +93,7 @@
           <label><input id="setupAssistToggle" type="checkbox"> 卡關輔助</label>
         </div>
         <p class="setup-note">卡關輔助：同一關失誤兩次後自動把板子加寬，過關後收回。</p>
+        <p class="setup-note">板子長度：接不到球就調長一點（越長越容易），想要更難就調短。遊戲中的設定選單也能隨時改。</p>
 
         <div class="volume-settings" aria-label="音量設定">
           <label>
@@ -217,8 +228,8 @@
           <button id="fullscreenBtn" type="button" class="secondary-btn" hidden>⛶</button>
           <button id="toggleBtn" type="button" class="secondary-btn">暫停</button>
           <button id="fireBtn" type="button" class="secondary-btn">射擊</button>
-          <button id="settingsBtn" type="button" class="secondary-btn">音效</button>
-          <button id="backToSetupBtn" type="button" class="secondary-btn">設定</button>
+          <button id="settingsBtn" type="button" class="secondary-btn">設定</button>
+          <button id="backToSetupBtn" type="button" class="secondary-btn">首頁</button>
         </div>
       </header>
 
@@ -246,6 +257,16 @@
             <label><input id="sfxToggle" type="checkbox"> 音效</label>
             <label><input id="hapticsToggle" type="checkbox"> 震動</label>
             <label><input id="assistToggle" type="checkbox"> 卡關輔助</label>
+            <label class="settings-select">
+              板子長度
+              <select id="paddleSizeSelectInGame">
+                <option value="xs">極短（最難）</option>
+                <option value="s">短（較難）</option>
+                <option value="m">標準</option>
+                <option value="l">長（較容易）</option>
+                <option value="xl">超長（最容易）</option>
+              </select>
+            </label>
             <label class="settings-select">
               背景音樂
               <select id="songSelectInGame">

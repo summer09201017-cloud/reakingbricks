@@ -10,6 +10,7 @@
 - PWA 安裝與新版更新提示
 - 最高分、每日最高分、成就與偏好設定，使用 `localStorage` 儲存
 - 直向與橫向兩套版面（手機直握單手可玩，設定可鎖回固定橫向）
+- 板子長度五段可選（極短～超長），難度與板長各自獨立，遊戲中可即時調整
 - 經典模式與每日挑戰模式
 - 休閒、標準、挑戰三種難度
 - 經典立體、霓虹、糖果、石磚四種主題
@@ -25,9 +26,9 @@
 - 卡關輔助、打擊感（震屏／頓幀，尊重 prefers-reduced-motion）
 - 本機排行榜 Top 10、續玩存檔、關卡編輯器與分享碼
 
-## 現況（2026-09-16）
+## 現況（2026-09-17）
 
-**v2.4.0 / sw v23**（直向遊玩 + 手機觸控目標）。
+**v2.5.0 / sw v24**（板子長度五段可選）。
 
 - ✅ 已完成的改動與待做清單看 `roadmap.md`
 - ✅ 接手要看的「怎麼跑、有什麼地雷、下一步」看 `讀我-HANDOFF.txt`
@@ -229,6 +230,20 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
     在真手機上看起來一樣大。
   - ⚠ 板寬的 `clamp(…, 100, 260)` 已經換成 `getPaddleMinWidth()` / `getPaddleMaxWidth()`。
     直接寫回數字 = 直向的板子會被夾成半個螢幕寬。
+- 🎚 **板子長度**（`PADDLE_SIZES`，0917）是乘在難度板寬上的倍率，和難度分開存
+  （`preferences.paddleSize`）。板寬的唯一算式是
+  `難度板寬 × 長度倍率 × getPaddleScale()` ＝ `getPaddleBaseWidth()`。
+  - ⚠ **上下限必須跟著倍率走**：下限若寫死 100，標準難度選「極短」（136×0.7=95.2）
+    會被悄悄夾回去 —— 選單有反應、板子沒變短，而語法檢查與單元測試全綠。
+    上限則要再留一步 `PADDLE_EXPAND_STEP`，否則休閒×超長（164×1.6=262>260）
+    會讓加寬寶物與卡關輔助變成「吃了沒反應」的道具。兩條都有
+    `test/patterns.mjs` 守著（它把這幾支函式從 `game.js` 原地挖出來跑）。
+  - 遊戲中改板長走的是 `updatePaddleSizePreference()` → `rescaleWorld()`，
+    與「玩到一半轉手機」同一條路：用新舊 base 的比值去縮，
+    `state.assistWidthBonus` 一起等比例帶過去，不會把玩家吃到的加寬算錯。
+  - 排行榜（`topScores[].paddle`）與每日成績（`records.dailyToday.paddle`）都記下
+    **當時**的板長。★ 舊紀錄沒有這個欄位時，圖卡上**不要**用做卡當下的設定去標，
+    那是另一種說謊的數字（同 `records.dailyToday` 那條誠實鐵則）。
 - 📱 **改了版面就要能「搬場面」**：`resizeCanvasForScreen()` 換完尺寸一定要呼叫
   `rescaleWorld()`，它會 `relayoutBricks()`（照 row/col 重排，不是等比例縮 ——
   磚塊是格狀的，縮過去會和新版面的邊距對不齊）並把球／板／寶物／落石搬到新座標系。

@@ -49,6 +49,8 @@ const difficultySelect = document.getElementById("difficultySelect");
 const modeSelect = document.getElementById("modeSelect");
 const themeSelect = document.getElementById("themeSelect");
 const screenModeSelect = document.getElementById("screenModeSelect");
+const paddleSizeSelect = document.getElementById("paddleSizeSelect");
+const paddleSizeSelectInGame = document.getElementById("paddleSizeSelectInGame");
 const songSelect = document.getElementById("songSelect");
 const songSelectInGame = document.getElementById("songSelectInGame");
 const musicToggle = document.getElementById("musicToggle");
@@ -90,10 +92,15 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.5.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
+  { date: "2026-09-17", items: [
+    "設定新增「板子長度」:極短／短／標準／長／超長五段。覺得手機直向的板子太短就調長一點(越長越好接),想要更難就調短",
+    "板長在遊戲中也能改:場上那塊板子當場變長變短,不必退出重來,吃到的加寬寶物也會一起換算",
+    "非預設的板長會標在遊戲標題、排行榜與每日挑戰圖卡上,分數不會被誤會成同一個條件下打出來的",
+  ] },
   { date: "2026-09-16", items: [
     "手機直向也能玩了：磚牆、板子、球速與拇指區都依直向重新排過，不再強制要求轉橫向",
     "設定新增「畫面方向」：自動（直向橫向都能玩）或固定橫向，想維持原本的橫向玩法可以選後者",
@@ -177,6 +184,18 @@ const PORTRAIT_DESCEND_SCALE = 0.6;       // 直向可下壓的格數多一倍 �
 const PADDLE_MIN_WIDTH = 100;             // ← 原本寫死在四處的 clamp(…, 100, 260)
 const PADDLE_MAX_WIDTH = 260;
 const PADDLE_EXPAND_STEP = 34;            // expand 寶物一次加多少(橫向基準)
+// 🎚 板子長度(0917 使用者要求:「直向的檔板有點太短,想長一點就容易一點,更短一點就難一點」)。
+//    倍率乘在「難度給的板寬」上 ⇒ 難度與長度是兩支獨立的旋鈕(挑戰難度也可以配超長板)。
+//    ★ 為什麼是倍率不是 px:板寬在直向還要再乘一次場地比例(getPaddleScale),
+//      寫死 px 的話同一個選項在直向與橫向的意義會不一樣。
+const PADDLE_SIZES = {
+  xs: { label: "極短", note: "最難", mul: 0.7 },
+  s: { label: "短", note: "較難", mul: 0.85 },
+  m: { label: "標準", note: "預設", mul: 1 },
+  l: { label: "長", note: "較容易", mul: 1.25 },
+  xl: { label: "超長", note: "最容易", mul: 1.6 },
+};
+const DEFAULT_PADDLE_SIZE = "m";
 const POWERUP_FALL_SPEED = 2.35;
 const BULLET_SPEED = 11.2;
 const PADDLE_HEIGHT = 22;
@@ -594,6 +613,8 @@ const defaultPreferences = {
   theme: "classic",
   // 📱 auto = 手機怎麼拿就怎麼玩(直向也能玩);landscape = 舊行為,直向時要求轉橫
   screenMode: "auto",
+  // 🎚 板子長度(見 PADDLE_SIZES)。和難度分開存:改難度不會把長度洗掉。
+  paddleSize: DEFAULT_PADDLE_SIZE,
 };
 
 const TOP_SCORES_MAX = 10;
@@ -762,6 +783,8 @@ function normalizeTopScores() {
       level: Math.max(1, Math.floor(Number(row.level) || 1)),
       mode: row.mode in MODES ? row.mode : "classic",
       difficulty: row.difficulty in DIFFICULTIES ? row.difficulty : "normal",
+      // 舊紀錄沒有板長欄位(v2.5.0 以前根本沒這個選項)⇒ 當成標準,而不是「不知道」
+      paddle: row.paddle in PADDLE_SIZES ? row.paddle : DEFAULT_PADDLE_SIZE,
       // 舊資料沒有日期就是沒有,不要編一個今天的日期上去
       date: typeof row.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? row.date : null,
     }))
@@ -821,6 +844,8 @@ function recordRunScore() {
     level: sessionStats.highestLevel,
     mode: state.mode,
     difficulty: state.difficulty,
+    // 板長也記:同一張榜上「超長板的 3000 分」和「極短板的 3000 分」不是同一件事
+    paddle: getPaddleSizeKey(),
     date: getTodayKey(),
   });
   normalizeTopScores();
@@ -840,14 +865,19 @@ function renderTopScores() {
     topScoreList.innerHTML = `<p class="top-empty">還沒有紀錄，打完一局就會出現在這裡。</p>`;
     return;
   }
-  topScoreList.innerHTML = list.map((row, i) => `
+  topScoreList.innerHTML = list.map((row, i) => {
+    const paddleNote = row.paddle && row.paddle !== DEFAULT_PADDLE_SIZE
+      ? ` · 板${PADDLE_SIZES[row.paddle].label}`
+      : "";
+    return `
     <p class="top-row${i === 0 ? " top-row-first" : ""}">
       <span class="top-rank">${i + 1}</span>
       <strong class="top-score">${row.score}</strong>
-      <span class="top-meta">第 ${row.level} 關 · ${DIFFICULTIES[row.difficulty].label} · ${MODES[row.mode]}</span>
+      <span class="top-meta">第 ${row.level} 關 · ${DIFFICULTIES[row.difficulty].label} · ${MODES[row.mode]}${paddleNote}</span>
       <span class="top-date">${row.date || "—"}</span>
     </p>
-  `).join("");
+  `;
+  }).join("");
 }
 
 // ── 💾 續玩存檔 ────────────────────────────────────────────────────────────
@@ -1621,7 +1651,14 @@ function renderEffectHud() {
 
 function renderModeLabel() {
   const difficulty = getDifficultyConfig().label;
-  modeLabel.textContent = state.mode === "daily" ? `${MODES.daily} ${dailyKey} / ${difficulty}` : `${MODES.classic} / ${difficulty}`;
+  // 板長不是預設就寫出來:同一個分數在「超長板」與「極短板」下不是同一件事,
+  // HUD 不講,截圖分享出去的數字就會誤導人。
+  const paddleNote = getPaddleSizeKey() === DEFAULT_PADDLE_SIZE
+    ? ""
+    : ` / 板${PADDLE_SIZES[getPaddleSizeKey()].label}`;
+  modeLabel.textContent = state.mode === "daily"
+    ? `${MODES.daily} ${dailyKey} / ${difficulty}${paddleNote}`
+    : `${MODES.classic} / ${difficulty}${paddleNote}`;
 }
 
 function formatPercent(value) {
@@ -1801,16 +1838,32 @@ function getPaddleScale() {
   return isPortraitLayout() ? canvas.width / PORTRAIT_PADDLE_REF_WIDTH : 1;
 }
 
-function getPaddleBaseWidth() {
-  return getDifficultyConfig().paddleWidth * getPaddleScale();
+function getPaddleSizeKey() {
+  return preferences.paddleSize in PADDLE_SIZES ? preferences.paddleSize : DEFAULT_PADDLE_SIZE;
 }
 
+function getPaddleSizeMultiplier() {
+  return PADDLE_SIZES[getPaddleSizeKey()].mul;
+}
+
+// 這一局「板子本來該有多寬」= 難度給的寬 × 玩家選的長度 × 場地比例。
+function getPaddleBaseWidth() {
+  return getDifficultyConfig().paddleWidth * getPaddleSizeMultiplier() * getPaddleScale();
+}
+
+// ⚠ 上下限要跟著玩家選的長度走,不能是寫死的 100/260:
+//   選了「極短」卻被下限夾回 100(標準難度是 136×0.7=95.2),設定就等於沒作用 ——
+//   而且畫面上看不出任何異常,是那種「語法檢查與測試全綠、玩家卻覺得選項壞掉」的病。
+//   這兩支守的是 expand 寶物與卡關輔助的加寬範圍,不是用來否決玩家的選擇。
 function getPaddleMinWidth() {
-  return PADDLE_MIN_WIDTH * getPaddleScale();
+  return Math.min(PADDLE_MIN_WIDTH, getDifficultyConfig().paddleWidth * getPaddleSizeMultiplier()) * getPaddleScale();
 }
 
 function getPaddleMaxWidth() {
-  return PADDLE_MAX_WIDTH * getPaddleScale();
+  // ⚠ 上限還要再留一步 expand 的成長空間:休閒×超長 是 164×1.6=262.4,已經超過 260 ⇒
+  //   加寬寶物與卡關輔助會雙雙變成「吃了沒反應」的道具(test/patterns.mjs 當場抓到)。
+  const chosen = getDifficultyConfig().paddleWidth * getPaddleSizeMultiplier();
+  return Math.max(PADDLE_MAX_WIDTH, chosen + PADDLE_EXPAND_STEP) * getPaddleScale();
 }
 
 function getAssistPaddleBonus() {
@@ -2353,6 +2406,12 @@ function syncSettingsControls() {
   if (screenModeSelect) {
     screenModeSelect.value = prefersForcedLandscape() ? "landscape" : "auto";
   }
+  if (paddleSizeSelect) {
+    paddleSizeSelect.value = getPaddleSizeKey();
+  }
+  if (paddleSizeSelectInGame) {
+    paddleSizeSelectInGame.value = getPaddleSizeKey();
+  }
   songSelect.value = preferences.song in SONGS ? preferences.song : "arcade";
   songSelectInGame.value = preferences.song in SONGS ? preferences.song : "arcade";
   applyTheme();
@@ -2482,7 +2541,9 @@ function resetPowerupCharges() {
 }
 
 function getShadowPaddleRect() {
-  const width = clamp(paddle.width * 0.68, 72, 150);
+  // ⚠ 上下限要乘場地比例:直向畫布只有 560 寬,寫死的 72 會讓「影子板」比本體還寬
+  //   (直向標準板寬才 69,選極短更只有 48)—— 玩家會看到一塊比自己還大的鏡像板。
+  const width = clamp(paddle.width * 0.68, 72 * getPaddleScale(), 150 * getPaddleScale());
   return {
     x: clamp(canvas.width - paddle.x - width, 0, canvas.width - width),
     y: paddle.y,
@@ -4422,7 +4483,7 @@ function openSettingsMenu() {
     stopMusic();
   }
 
-  setOverlay("聲音設定", "調整音樂、音效、音量與震動，設定會自動保存。", {
+  setOverlay("遊戲設定", "調整板子長度、音樂、音效、音量與震動，設定會自動保存。", {
     showActions: true,
     showSettings: true,
     stats: null,
@@ -4484,6 +4545,7 @@ function recordDailyToday() {
   records.dailyToday = {
     key: todayKey,
     difficulty: state.difficulty,
+    paddle: getPaddleSizeKey(),
     score: state.score,
     level: Math.max(1, sessionStats.highestLevel),
     ballsUsed: sessionStats.livesLost,
@@ -4501,6 +4563,7 @@ function getDailyCardSource() {
     ? {
       key: todayKey,
       difficulty: state.difficulty,
+      paddle: getPaddleSizeKey(),
       score: state.score,
       level: Math.max(1, sessionStats.highestLevel),
       ballsUsed: sessionStats.livesLost,
@@ -4536,7 +4599,11 @@ function getDailyCardData() {
   return {
     dateKey: source.key,
     puzzleNo: getDailyPuzzleNumber(source.key, source.difficulty),
-    difficultyLabel: difficultyConfig.label,
+    // 板長只在「這筆成績本身記了板長」時才標:舊紀錄沒有這個欄位,
+    // 拿做卡當下的設定去標昨天打的分數,就是另一種說謊的數字。
+    difficultyLabel: source.paddle && source.paddle !== DEFAULT_PADDLE_SIZE
+      ? `${difficultyConfig.label}・板${PADDLE_SIZES[source.paddle].label}`
+      : difficultyConfig.label,
     played: source.played,
     score: source.score,
     level: source.level,
@@ -5159,6 +5226,31 @@ if (screenModeSelect) {
     // 在遊戲中改的話,當場換版面(不用退出重進)
     handleViewportChange();
   });
+}
+
+// 🎚 板子長度。★ 場上那塊板子當場跟著變長/變短,走的是和「玩到一半轉手機」同一條路:
+//   rescaleWorld() 用新舊 base 的比值去縮 ⇒ 玩家吃到的 expand 寶物與卡關輔助的加寬
+//   (state.assistWidthBonus)會一起等比例帶過去,不會被算錯或被吃掉。
+function updatePaddleSizePreference(value) {
+  const next = value in PADDLE_SIZES ? value : DEFAULT_PADDLE_SIZE;
+  if (next === getPaddleSizeKey()) {
+    return;
+  }
+  const prev = isGameScreenActive ? captureLayoutSnapshot() : null;
+  preferences.paddleSize = next;
+  savePreferences();
+  syncSettingsControls();
+  if (prev) {
+    rescaleWorld(prev);
+  }
+  renderModeLabel();
+}
+
+if (paddleSizeSelect) {
+  paddleSizeSelect.addEventListener("change", () => updatePaddleSizePreference(paddleSizeSelect.value));
+}
+if (paddleSizeSelectInGame) {
+  paddleSizeSelectInGame.addEventListener("change", () => updatePaddleSizePreference(paddleSizeSelectInGame.value));
 }
 
 songSelect.addEventListener("change", () => {

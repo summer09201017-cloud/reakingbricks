@@ -131,5 +131,88 @@ for (const c of CASES) {
     + (bad.length ? " → " + bad.join("；") : ""));
 }
 
+// ── 🎚 板子長度五段(0917)────────────────────────────────────────────────────
+// 為什麼要有這一段:板寬的最後一哩是 clamp(…, min, max)。下限本來寫死 100,
+// 而標準難度選「極短」是 136×0.7=95.2 ⇒ 會被悄悄夾回 100,選項等於沒作用,
+// 而且**語法檢查與所有既有測試都是綠的**(畫面上只是「好像沒變」)。
+function sliceConst(name) {
+  const at = src.indexOf(`const ${name} = {`);
+  if (at < 0) throw new Error(`找不到 const ${name}`);
+  let depth = 0;
+  for (let i = src.indexOf("{", at); i < src.length; i += 1) {
+    if (src[i] === "{") depth += 1;
+    else if (src[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return src.slice(at, i + 1) + ";";
+    }
+  }
+  throw new Error(`const ${name} 的大括號不成對`);
+}
+
+const PADDLE_MIN_WIDTH = Number(/const PADDLE_MIN_WIDTH = (\d+)/.exec(src)[1]);
+const PADDLE_MAX_WIDTH = Number(/const PADDLE_MAX_WIDTH = (\d+)/.exec(src)[1]);
+const PADDLE_EXPAND_STEP = Number(/const PADDLE_EXPAND_STEP = (\d+)/.exec(src)[1]);
+const PORTRAIT_PADDLE_REF_WIDTH = Number(/const PORTRAIT_PADDLE_REF_WIDTH = (\d+)/.exec(src)[1]);
+const BALL_RADIUS = Number(/const BALL_RADIUS = (\d+)/.exec(src)[1]);
+const DEFAULT_PADDLE_SIZE = /const DEFAULT_PADDLE_SIZE = "(\w+)"/.exec(src)[1];
+
+const paddleApi = new Function(
+  "canvas", "isPortraitLayout", "preferences", "getDifficultyConfig",
+  "PADDLE_MIN_WIDTH", "PADDLE_MAX_WIDTH", "PADDLE_EXPAND_STEP", "PORTRAIT_PADDLE_REF_WIDTH", "DEFAULT_PADDLE_SIZE",
+  [
+    sliceConst("PADDLE_SIZES"),
+    sliceFunction("getPaddleScale"),
+    sliceFunction("getPaddleSizeKey"),
+    sliceFunction("getPaddleSizeMultiplier"),
+    sliceFunction("getPaddleBaseWidth"),
+    sliceFunction("getPaddleMinWidth"),
+    sliceFunction("getPaddleMaxWidth"),
+    "return { PADDLE_SIZES, getPaddleBaseWidth, getPaddleMinWidth, getPaddleMaxWidth };",
+  ].join("\n"),
+);
+
+const DIFFS = Object.entries(
+  new Function(sliceConst("DIFFICULTIES") + " return DIFFICULTIES;")(),
+);
+const PADDLE_CASES = [
+  { name: "橫向 812x560(小視窗)", w: 812, portrait: false, maxShare: 0.35 },
+  { name: "橫向 1428x560(寬螢幕)", w: 1428, portrait: false, maxShare: 0.35 },
+  { name: `直向 ${PORTRAIT_BASE_WIDTH}(手機)`, w: PORTRAIT_BASE_WIDTH, portrait: true, maxShare: 0.25 },
+];
+
+for (const c of PADDLE_CASES) {
+  for (const [diffKey, diff] of DIFFS) {
+    const preferences = { paddleSize: DEFAULT_PADDLE_SIZE };
+    const api = paddleApi(
+      { width: c.w, height: 560 }, () => c.portrait, preferences, () => diff,
+      PADDLE_MIN_WIDTH, PADDLE_MAX_WIDTH, PADDLE_EXPAND_STEP, PORTRAIT_PADDLE_REF_WIDTH, DEFAULT_PADDLE_SIZE,
+    );
+    const keys = Object.keys(api.PADDLE_SIZES);
+    const widths = [];
+    const bad = [];
+    for (const key of keys) {
+      preferences.paddleSize = key;
+      const base = api.getPaddleBaseWidth();
+      widths.push(base);
+      // ① 玩家選的長度不可以被上下限悄悄吃掉
+      if (api.getPaddleMinWidth() > base + 1e-6) bad.push(`${key} 被下限夾大(${base.toFixed(1)} → ${api.getPaddleMinWidth().toFixed(1)})`);
+      if (api.getPaddleMaxWidth() < base - 1e-6) bad.push(`${key} 被上限夾小`);
+      // ② 寶物還要有成長/縮小的空間,不然 expand / shrink 變成沒作用的道具
+      if (api.getPaddleMaxWidth() <= base) bad.push(`${key} 沒有 expand 空間`);
+      // ③ 最短的一段仍要接得到球(板子比球還小就不是難度,是整人)
+      if (base < BALL_RADIUS * 2 * 2) bad.push(`${key} 只有 ${base.toFixed(1)}px,不到球直徑的兩倍`);
+      // ④ 最長的一段不可以長到「站著不動也會自己接到」
+      if (base > c.w * c.maxShare) bad.push(`${key} 佔畫布 ${(base / c.w * 100).toFixed(1)}%,超過 ${c.maxShare * 100}%`);
+    }
+    // ⑤ 五段必須嚴格遞增,否則選單上兩個選項會是同一件事
+    for (let i = 1; i < widths.length; i += 1) {
+      if (widths[i] <= widths[i - 1]) bad.push(`${keys[i]} 沒有比 ${keys[i - 1]} 長`);
+    }
+    check(bad.length === 0,
+      `${c.name} / ${diff.label}:板寬 ${widths.map((w) => Math.round(w)).join(" < ")}`
+      + (bad.length ? " → " + bad.join("；") : ""));
+  }
+}
+
 console.log(fail ? `\n==> ${fail} 項不合格` : "\n==> 全部通過");
 process.exit(fail ? 1 : 0);
