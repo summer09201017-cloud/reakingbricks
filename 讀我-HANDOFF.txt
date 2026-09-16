@@ -75,11 +75,19 @@
       hook `zero-pii-guard` 讀的是原始指令字串,shell 還沒展開,看到字面 "$dist" 就
       fail-closed 拒絕放行。**部署那一行的目錄要寫展開後的絕對路徑**
       (前面備料用變數沒關係)。已改進 CLAUDE.md。
-    ⚠ 本機沒有裝 `playwright-core`（這台是 agape250，不是 HFP）。
-      這次是借 `Desktop/hfpc-sparks-hub/node_modules` 跑的：
-      把 `test/verify-browser.mjs` 複製到一個暫存夾、在那裡 mklink /J 一個
-      node_modules 過去再跑。**不要在 repo 裡建 node_modules** ——
-      `netlify.toml` 的 publish 是 `.`，會整包上線。
+    ⚠ `playwright-core` 解析得到與否,**取決於這個 clone 的路徑往上有沒有 node_modules**,
+      不是取決於「哪一台機」。當場量一行就知道,不要憑機器身分猜:
+        node -e "console.log(require.resolve('playwright-core'))"
+      · 解析得到(例:HFP 機從 Downloads\hfpc-git\ 出發會一路走到 C:\Users\HFP\node_modules)
+        ⇒ 直接在 repo 跑 `node test/verify-browser.mjs` 就好,不必繞。
+      · 解析不到(0916 實測:agape250 機、本 clone 在 Downloads\0916早\0916早\hfpc-git\,
+        往上一路到 C:\Users\agape250\ 都沒有 node_modules,CJS/ESM 都 MODULE_NOT_FOUND)
+        ⇒ 把 test/verify-browser.mjs 複製到一個暫存夾,在那裡 mklink /J 一個現成的
+        node_modules 過去再跑(0916 借的是 Desktop\hfpc-sparks-hub\node_modules)。
+      ★ **不要在 repo 裡建 node_modules** —— `netlify.toml` 的 publish 是 `.`,會整包上線。
+      ★ 這條本身就是教訓:原本這裡寫的是「這台是 agape250,不是 HFP」——把判準綁在**機器身分**上。
+        0916 當天就有另一場照著它誤推(它印出的是 C:\Users\HFP\node_modules,卻自介成 agape250 機),
+        回頭說「這台有、不用繞」。⇒ 判準要綁**當下量得到的事實**,不是綁機器名字。
 
 ■⑥ 下一步
 
