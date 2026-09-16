@@ -69,7 +69,12 @@
   · `node test/sharecode.mjs` / `test/sharecard.mjs`
   · `node test/verify-browser.mjs` 本機 8931：**51 項全通過**（直向 + 橫向 + 轉向）
   · 目視驗收：直向一般關 / BOSS 關 / 橫向一般關都截圖看過，版面正確
-  ⚠ **還沒部署**（Netlify 與 Cloudflare Pages 兩份都還是 v22 前的版本）。
+  · **兩份線上都已推上 v23 並驗過**:netlify.app(git push 自動)與
+    pages.dev(wrangler 手動),兩邊各跑一次 verify-browser,51 項全通過。
+    ⚠ 部署時踩到一顆新的:CLAUDE.md 那段 `wrangler pages deploy $dist` **跑不動** ——
+      hook `zero-pii-guard` 讀的是原始指令字串,shell 還沒展開,看到字面 "$dist" 就
+      fail-closed 拒絕放行。**部署那一行的目錄要寫展開後的絕對路徑**
+      (前面備料用變數沒關係)。已改進 CLAUDE.md。
     ⚠ 本機沒有裝 `playwright-core`（這台是 agape250，不是 HFP）。
       這次是借 `Desktop/hfpc-sparks-hub/node_modules` 跑的：
       把 `test/verify-browser.mjs` 複製到一個暫存夾、在那裡 mklink /J 一個

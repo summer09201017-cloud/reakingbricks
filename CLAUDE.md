@@ -152,11 +152,16 @@ Cloudflare Pages 那份要手動推：
 #     要看 `wrangler pages deployment list` 或線上指紋。
 # ★ 部署目錄只放要上線的 8 個檔，不要整包根目錄（避免 .git / .wrangler 外洩）。
 $dist = Join-Path $env:TEMP "bricks-dist"   # 0916 修：原本寫成 "$env:TEMP\bricks-dist"，反斜線在某次補丁裡被吃掉，變成一個展不開的變數名
+if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }   # 上一次的殘留不要跟著上線
 New-Item -ItemType Directory -Force $dist | Out-Null
 Copy-Item index.html,game.js,styles.css,sw.js,manifest.webmanifest $dist
 Copy-Item -Recurse -Force icons $dist
-Push-Location $env:TEMP
-npx wrangler pages deploy $dist --project-name bricksbreaking --branch main
+# ⚠ 0916 二修:**wrangler 那一行的目錄要寫展開後的絕對路徑,不可以用變數**。
+#   hook `zero-pii-guard` 讀的是「原始指令字串」,shell 還沒展開 ⇒ 它看到字面 "$dist",
+#   掃不到目錄就 fail-closed 直接拒絕放行(訊息:「掃不到部署目錄,拒絕放行」)。
+#   前面備料用變數沒問題,只有部署那一行要寫死。
+Push-Location "C:\Users\<你的帳號>\AppData\Local\Temp"
+npx wrangler pages deploy "C:\Users\<你的帳號>\AppData\Local\Temp\bricks-dist" --project-name bricksbreaking --branch main
 Pop-Location
 ```
 
