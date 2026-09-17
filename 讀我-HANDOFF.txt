@@ -63,7 +63,30 @@
     只驗公式的話「下拉點不到 / 藏在一顆叫『音效』的鈕後面」都會是綠的)
   · 目視:直向 xs / m / xl 各截一張,板子長度肉眼可辨,HUD 標題出現「板超長」
 
-■⑦ 下一步
+■⑦ 交接(0917 /handoff・專案級)
+
+  · 機器身分**當場量**:USERPROFILE=C:\Users\HFP、hostname=**DEYI**、沒有 C:\Users\agape250
+    ⇒ 本輪一律寫「HFP 機(hostname DEYI)」。(照 0916 那條:身分不可從別台機運來的文件繼承。)
+  · 級別=**專案級**:量 ListAgents 時還有兩場 busy(0916-take-over-DEYI、0917-棋類3D盤點)
+    ⇒ skills repo 的總帳(HANDOFF ★段 / roadmap / skills zip)留給收尾場,我只推自己的 commit。
+    (大表是例外:使用者當面交代「3D 版記進大表」,所以只補我這一輪的增量,沒有重寫別人的段落。)
+  · 桌面 zip:C:\Users\HFP\Desktop\reakingbricks-交接-2026-09-17.zip(146,633 bytes)
+    —— 用 `git archive HEAD` 打的(與 origin/main 逐檔一致,不會混進別場未提交的檔);
+    21 條目、**沒有 .git/**、禁字表 260 條 × 14 檔**零命中**
+    (用 zero-pii-guard 的 forbidHitIn 原碼掃**整份檔**,不是掃 diff —— 歷史留下的個資不會出現在 diff 裡)。
+  · ☁️ Google 雲端硬碟:**已驗到**(不是只放進同步資料夾)——`HFPC-交接` 資料夾
+    parentId `1pauIu6IpXN4IVIUNoiK0DJ27ZWA4fEdI`、fileSize `146633` 逐位元相同、
+    owner summer09201017@gmail.com;兩個探針檔也都查得到。
+  · 跨專案沉澱:`difficulty-knob` 的「反面教材」新增一節(旋鈕算出來的值最後會走 clamp,
+    寫死的上下限會把玩家的選擇悄悄吃掉),skills repo `feb88a9`。
+    另外隊友 0916-take-over-DEYI 把本輪兩條收進 `portrait-landscape-dual-layout`
+    §3(clamp)與 §9(量測時機:蓋版還沒收就量觸控 = 144/144 假紅),§8 活範例升成 v2.5.0 / sw v24 / 61 項。
+  · 🩹 作品集對賬(`hfpc-portfolio` 的 `npm run check`)亮 1 紅:
+    「遊戲使用統計儀表板 /stats 連不上」—— **實測是假紅**,當場 curl 回 **HTTP 200**,
+    只是冷啟動要 8.5 秒,超過檢查器的逾時 ⇒ 要修的是檢查器(逾時或重試),不是那個站。
+    本 repo 的卡片(bricksbreaking)不在紅名單。
+
+■⑧ 下一步
 
   roadmap 第一列「雙人同機對戰」。
   📋 等使用者拍板、不要自行開工:耶利哥城牆主題關卡包、3D 版打磚塊(立體視角)。
