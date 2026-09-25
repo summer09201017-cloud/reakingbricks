@@ -57,6 +57,9 @@ const musicToggle = document.getElementById("musicToggle");
 const sfxToggle = document.getElementById("sfxToggle");
 const hapticsToggle = document.getElementById("hapticsToggle");
 const assistToggle = document.getElementById("assistToggle");
+const render3dToggle = document.getElementById("render3dToggle");
+const setupRender3dToggle = document.getElementById("setupRender3dToggle");
+const gameCanvas3d = document.getElementById("gameCanvas3d");
 const musicVolume = document.getElementById("musicVolume");
 const sfxVolume = document.getElementById("sfxVolume");
 const musicVolumeValue = document.getElementById("musicVolumeValue");
@@ -92,10 +95,14 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.6.0";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
+  { date: "2026-09-25", items: [
+    "新增「立體渲染（3D）」設定：把磚牆、板子、球換成立體方塊來畫，玩法、紀錄、分享碼完全不變，隨時可以切回原本畫面",
+    "立體渲染需要透過網路伺服器開啟（不能直接雙擊 index.html），舊裝置若不支援會自動退回 2D",
+  ] },
   { date: "2026-09-17", items: [
     "設定新增「板子長度」:極短／短／標準／長／超長五段。覺得手機直向的板子太短就調長一點(越長越好接),想要更難就調短",
     "板長在遊戲中也能改:場上那塊板子當場變長變短,不必退出重來,吃到的加寬寶物也會一起換算",
@@ -605,6 +612,7 @@ const defaultPreferences = {
   sfx: true,
   haptics: true,
   assist: true,
+  render3d: false, // 🧊 立體渲染(2026-09-25):純視覺開關,物理/存檔/分享碼完全不受影響
   musicVolume: 100,
   sfxVolume: 100,
   song: "arcade",
@@ -1240,6 +1248,48 @@ function getSongConfig() {
 
 function applyTheme() {
   document.body.dataset.theme = state.theme;
+}
+
+// 🧊 立體渲染(2026-09-25):render3d.js 是 ES module,用動態 import 才載入 ——
+//   ①只玩 2D 的人不用多下載一份 Three.js ②game.js 本身留著 classic script,
+//   CLAUDE.md 說的「直接雙擊 index.html 就能玩」不會被 module 的 file:// CORS 限制打壞
+//   (真的踩到那個限制時,下面的 .catch 會靜默把設定改回 2D,不會讓遊戲整個掛掉)。
+// ⚠ 只在函式裡呼叫、絕不在檔案頂層呼叫 —— 動態載入是非同步的,gameLoop 真的要用到它
+//   一定已經是好幾個影格之後,不會有「THREE 還沒準備好」這種時序雷。
+let render3dApi = null;
+let render3dLoadPromise = null;
+let render3dFailed = false;
+
+function ensureRender3dLoaded() {
+  if (render3dApi || render3dFailed) {
+    return Promise.resolve(render3dApi);
+  }
+  if (!render3dLoadPromise) {
+    render3dLoadPromise = import("./render3d.js")
+      .then((mod) => {
+        render3dApi = mod.Render3D;
+        render3dApi.init(gameCanvas3d);
+        return render3dApi;
+      })
+      .catch((error) => {
+        console.warn("3D 模式載入失敗，已自動退回 2D。", error);
+        render3dFailed = true;
+        if (preferences.render3d) {
+          preferences.render3d = false;
+          savePreferences();
+          syncSettingsControls();
+        }
+        return null;
+      });
+  }
+  return render3dLoadPromise;
+}
+
+function applyRenderMode() {
+  document.body.classList.toggle("mode-3d", !!preferences.render3d);
+  if (preferences.render3d) {
+    ensureRender3dLoaded();
+  }
 }
 
 function countAliveBricks() {
@@ -2392,6 +2442,8 @@ function syncSettingsControls() {
   setupHapticsToggle.checked = preferences.haptics;
   assistToggle.checked = preferences.assist;
   setupAssistToggle.checked = preferences.assist;
+  render3dToggle.checked = preferences.render3d;
+  setupRender3dToggle.checked = preferences.render3d;
   musicVolume.value = String(preferences.musicVolume);
   sfxVolume.value = String(preferences.sfxVolume);
   setupMusicVolume.value = String(preferences.musicVolume);
@@ -2416,6 +2468,7 @@ function syncSettingsControls() {
   songSelectInGame.value = preferences.song in SONGS ? preferences.song : "arcade";
   applyTheme();
   applyAudioLevels();
+  applyRenderMode();
 }
 
 let restartCountdownTimerId = null;
@@ -4205,6 +4258,32 @@ function drawBricks() {
   }
 }
 
+// 🧊 立體渲染用:磚塊本體交給 3D 場景畫,但耐打度數字／特殊磚字母還是要看得到 ——
+//   從 drawBricks() 拆出「只畫字」這一半，2D 疊層(render3dFrame)才會呼叫它。
+//   ⚠ 顏色刻意跟 drawBricks() 裡那份不同:2D 模式的字是「深色字疊在淺色磚上」，
+//     3D 模式的字浮空疊在 WebGL 畫面上、背後可能是任何顏色，所以改成「淺色字 + 深色描邊」，
+//     不管背後是哪個主題、哪種磚色都看得清楚。
+function drawBrickLabels() {
+  for (let i = 0; i < bricks.length; i += 1) {
+    const brick = bricks[i];
+    if (!brick.alive) {
+      continue;
+    }
+    const label = getBrickLabel(brick);
+    if (!label) {
+      continue;
+    }
+    ctx.font = brick.special === "boss" ? "bold 20px Trebuchet MS" : "bold 14px Trebuchet MS";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#00152dcc";
+    ctx.strokeText(label, brick.x + brick.width * 0.5, brick.y + brick.height * 0.55);
+    ctx.fillStyle = "#eaf6ffee";
+    ctx.fillText(label, brick.x + brick.width * 0.5, brick.y + brick.height * 0.55);
+  }
+}
+
 function drawPowerups() {
   for (let i = 0; i < powerups.length; i += 1) {
     const powerup = powerups[i];
@@ -4393,14 +4472,92 @@ function drawStatus() {
   }
 }
 
+// 🧊 立體渲染的每幀進入點:2D canvas 只留「不是實體方塊」的疊層(危險線／道具／子彈／
+//   護盾條／磚塊字／浮動分數／狀態列),球場地板、磚塊、板子、球本體全部交給 render3d.js
+//   畫在底下那層透明的 WebGL canvas(styles.css 的 body.mode-3d 讓兩塊 canvas 疊在一起)。
+//   ⚠ 震屏目前只晃 2D 疊層、沒有晃 3D 鏡頭——3D 場景本身不動,是刻意先簡化的範圍,
+//     要加鏡頭震動之後再補,不影響現有判定與存檔。
+function render3dFrame(shaking, amp) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (shaking) {
+    ctx.save();
+    ctx.translate((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp * 0.75);
+  }
+  drawDangerLine();
+  drawBrickLabels();
+  drawPowerups();
+  drawBullets();
+  drawShieldWall();
+  drawBossRocks();
+  drawFloatingTexts();
+  if (shaking) {
+    ctx.restore();
+  }
+  drawStatus();
+
+  if (!render3dApi) {
+    return; // 還在非同步載入中(或載入失敗),這幾影格先只看得到 2D 疊層,等載完自動接上
+  }
+
+  const theme = getThemeConfig();
+  const glowColor = state.pierceTimer > 0
+    ? "#bef264"
+    : state.bombBallCharges > 0
+      ? "#fb7185"
+      : state.bigBallTimer > 0
+        ? "#ffd166"
+        : "#62d4ff";
+
+  const brickSnapshots = [];
+  for (let i = 0; i < bricks.length; i += 1) {
+    const brick = bricks[i];
+    if (!brick.alive) {
+      continue;
+    }
+    brickSnapshots.push({
+      ref: brick,
+      x: brick.x,
+      y: brick.y,
+      width: brick.width,
+      height: brick.height,
+      color: getBrickColor(brick),
+    });
+  }
+
+  const ballSnapshots = balls.map((ball) => ({
+    x: ball.x,
+    y: ball.y,
+    radius: ball.radius,
+    color: theme.ball[1],
+    glow: glowColor,
+  }));
+
+  render3dApi.syncScene({
+    width: canvas.width,
+    height: canvas.height,
+    floorColor: theme.background[1],
+    voidColor: theme.background[2],
+    paddle: { x: paddle.x, y: paddle.y, width: paddle.width, height: paddle.height, color: theme.paddle[0] },
+    balls: ballSnapshots,
+    bricks: brickSnapshots,
+  });
+  render3dApi.renderFrame();
+}
+
 function render() {
   // 震屏:位移整個畫面。刻意不動 HUD(那是 DOM),只有 canvas 會晃。
   const shaking = state.shake > 0.05;
+  // ★ 這裡必須用 Math.random() 不是 random():random() 是每日挑戰的 seeded RNG,
+  //   在 render 裡抽會讓「畫面震了幾幀」影響到磚塊配置,同一天同一關就不再一致。
+  const amp = shaking ? Math.min(SHAKE_MAX, state.shake) : 0;
+
+  if (preferences.render3d) {
+    render3dFrame(shaking, amp);
+    return;
+  }
+
   if (shaking) {
-    const amp = Math.min(SHAKE_MAX, state.shake);
     ctx.save();
-    // ★ 這裡必須用 Math.random() 不是 random():random() 是每日挑戰的 seeded RNG,
-    //   在 render 裡抽會讓「畫面震了幾幀」影響到磚塊配置,同一天同一關就不再一致。
     ctx.translate((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp * 0.75);
   }
 
@@ -5194,6 +5351,8 @@ setupSfxToggle.addEventListener("change", () => updatePreference("sfx", setupSfx
 setupHapticsToggle.addEventListener("change", () => updatePreference("haptics", setupHapticsToggle.checked));
 assistToggle.addEventListener("change", () => updatePreference("assist", assistToggle.checked));
 setupAssistToggle.addEventListener("change", () => updatePreference("assist", setupAssistToggle.checked));
+render3dToggle.addEventListener("change", () => updatePreference("render3d", render3dToggle.checked));
+setupRender3dToggle.addEventListener("change", () => updatePreference("render3d", setupRender3dToggle.checked));
 musicVolume.addEventListener("input", () => updateVolumePreference("musicVolume", musicVolume.value));
 sfxVolume.addEventListener("input", () => updateVolumePreference("sfxVolume", sfxVolume.value));
 setupMusicVolume.addEventListener("input", () => updateVolumePreference("musicVolume", setupMusicVolume.value));

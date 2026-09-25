@@ -25,10 +25,11 @@
 - Boss 會往下砸落石（有紅色預告線）；標準與挑戰難度的磚塊會定時下移
 - 卡關輔助、打擊感（震屏／頓幀，尊重 prefers-reduced-motion）
 - 本機排行榜 Top 10、續玩存檔、關卡編輯器與分享碼
+- 立體渲染（3D）：設定裡一個開關，把磚牆／板子／球換成立體方塊來畫，玩法與存檔完全不受影響
 
-## 現況（2026-09-17）
+## 現況（2026-09-25）
 
-**v2.5.0 / sw v24**（板子長度五段可選）。
+**v2.6.0 / sw v25**（立體渲染 3D 模式；上一版 v2.5.0 / sw v24 是 09-17 的板子長度五段可選）。
 
 - ✅ 已完成的改動與待做清單看 `roadmap.md`
 - ✅ 接手要看的「怎麼跑、有什麼地雷、下一步」看 `讀我-HANDOFF.txt`
@@ -53,7 +54,15 @@
 - `index.html`：頁面結構、HUD、設定列、遊戲畫布、手機按鈕、資訊面板。
 - `styles.css`：響應式版面、遊戲外層 UI、面板與按鈕樣式。
 - `game.js`：所有遊戲狀態、繪製、物理、寶物、成就、統計、PWA 更新提示。
-- `sw.js`：Service Worker 快取與更新流程。
+  ★ `render()` 依 `preferences.render3d` 分兩條路：2D 完整照舊；3D 只留「不是實體方塊」的
+  疊層（危險線／道具／子彈／護盾條／磚塊字／浮動分數／狀態列），實體部分交給 `render3d.js`。
+- `render3d.js`：立體渲染（3D）模式的畫面層。**ES module**，只在玩家打開 3D 開關那一刻才用
+  動態 `import()` 載入（2D 玩家不用多下載 Three.js；`game.js` 本身維持 classic script，
+  `file://` 雙擊仍能開）。完全不碰遊戲規則，只認每幀一份純資料快照（座標／尺寸／顏色）。
+- `vendor/three.module.js`：Three.js 的 ES module build，下載進 repo 的靜態檔案（沒有走 CDN、
+  沒有 npm、沒有建置步驟）。改版要重新下載同一個 pin 住的版本，不要手改內容。
+- `sw.js`：Service Worker 快取與更新流程；`ASSETS` 含 `render3d.js`／`vendor/three.module.js`，
+  已安裝過的使用者離線時也能用 3D 模式。
 - `manifest.webmanifest`：PWA 名稱、顏色與圖示設定。
 - `netlify.toml`：Netlify 靜態部署與快取標頭。
 - `icons/`：PWA 圖示。
@@ -62,12 +71,44 @@
 - `test/sharecard.mjs`：每日挑戰分享圖卡自我檢查（零相依，用假 ctx 驗「畫面上印了什麼字」）。
 - `test/verify-browser.mjs`：真瀏覽器驗收（`playwright-core` + 系統 Edge／Chrome，可打本機或線上）。
   含直向可玩性與「玩到一半轉手機」的迴歸（磚塊／球／板子有沒有跑到畫面外、下壓進度有沒有被偷走）。
+- `test/verify-browser-3d.mjs`：立體渲染模式的真瀏覽器驗收（另開一支，不跟上面那支混在一起）。
+  含切換／resize／偏好持久化，以及**刻意模擬 render3d.js 載入失敗**要靜默退回 2D 的迴歸——
+  ⚠ 模擬失敗時 context 要開 `serviceWorkers: "block"`，不要用 `page.route()` 攔 `sw.js` 的請求：
+  Service Worker 一旦裝上，會用自己的 fetch 事件處理常式把已預先快取的 `render3d.js` 端出來，
+  那條路徑不經過 `page.route()`，會讓「模擬載入失敗」的測試看起來像沒攔到（已踩過一次）。
 - `roadmap.md`：待做清單與「刻意不做」的理由。
 - `讀我-HANDOFF.txt`：給另一台機接手用的交接文件。
 
+## 立體渲染（3D）模式的設計決定（2026-09-25）
+
+使用者原話：「打磚塊，能做 3D 版嗎？」「（2D／3D）都是另開一支嗎？」「舊網站能 2D 與 2.5D 切換嗎？」
+——最後拍板：**同一支 repo 裡加一個可切換的開關**，不是另開新站，理由與取捨都寫在這裡：
+
+- **物理層完全不碰**：球／板子／磚塊的座標、碰撞、寶物、Boss、關卡編輯器、分享碼、存讀檔、
+  排行榜——一行都沒動。3D 只是「換一顆鏡頭去看同一份 2D 座標」，不是另一個引擎，
+  所以現有五千多行邏輯與既有測試（patterns／sharecode／sharecard／verify-browser）全部原封不動繼續有效。
+- **兩塊 canvas 疊在一起**：`#gameCanvas3d`（新的 WebGL 畫布）在下面畫地板／磚塊／板子／球本體；
+  `#gameCanvas`（原本的 2D 畫布）疊在上面，打開 3D 時背景變透明，只留危險線／道具／子彈／
+  護盾條／磚塊耐打度數字／浮動分數／狀態列這些「不是實體方塊」的疊層。省下重做這些次要系統的成本，
+  也讓兩個畫面共用同一組視覺語言。
+- **Three.js 動態載入，不是靜態 `<script>` 標籤**：`game.js` 是 classic script（CLAUDE.md 說的
+  「直接雙擊 index.html 就能玩」需要它不是 module，ES module 在 `file://` 下會被瀏覽器的 CORS
+  擋掉）。所以 Three.js 與 `render3d.js` 都用動態 `import()`，只在玩家真的打開 3D 開關那一刻才載入：
+  只玩 2D 的人不必多下載一份 Three.js，`file://` 使用者打開開關會載入失敗但**靜默退回 2D**
+  （`ensureRender3dLoaded()` 的 `.catch()` 接住，把偏好值也一起改回 `false`，不會卡在半殘狀態）。
+- **鏡頭角度是「固定俯角＋依尺寸重算距離」，不是每種長寬比各調一次**：用球場對角線的一半當半徑，
+  算出「這個半徑在目前 FOV 下要多遠才完整塞進畫面」，寧可多留白也絕不裁到磚塊或板子。
+  代價：直向手機（球場又瘦又長）因此被迫拉得比較遠，看起來偏向俯視；橫向（球場較扁）立體感明顯很多。
+  這是刻意的取捨，不是 bug——之後想改善直向，思路是「依長寬比動態調整俯角」，目前先不做。
+- **`preserveDrawingBuffer: true`**：WebGL 預設畫完那一幀就可以清掉緩衝區，畫面本身完全正常，
+  但任何事後用 `drawImage`／`toDataURL` 讀這塊 canvas 的驗收腳本會讀到一片空白，
+  誤判成「3D 什麼都沒畫出來」（這輪真的中過一次）。這顆場景很小，多這個成本可忽略。
+
 ## 本機執行
 
-直接開啟 `index.html` 可以玩，但 PWA 安裝與 Service Worker 需要 HTTP/HTTPS 環境。建議測試時使用：
+直接開啟 `index.html` 可以玩，但 PWA 安裝與 Service Worker 需要 HTTP/HTTPS 環境；
+**立體渲染（3D）模式也需要**（`render3d.js` 是 ES module，`file://` 下 Chrome 的 CORS
+會擋掉它，打開開關會自動退回 2D，不影響其他功能）。建議測試時使用：
 
 ```powershell
 python -m http.server 8080
@@ -98,7 +139,9 @@ node test/sharecard.mjs
 ```powershell
 python -m http.server 8931          # 另一個視窗
 node test/verify-browser.mjs
+node test/verify-browser-3d.mjs                                               # 改過立體渲染再跑這支
 $env:BASE="https://bricksbreaking.pages.dev"; node test/verify-browser.mjs   # 打線上
+$env:BASE="https://bricksbreaking.pages.dev"; node test/verify-browser-3d.mjs
 $env:SHOT="1"; node test/verify-browser.mjs                                   # 順便存截圖
 ```
 
@@ -151,12 +194,15 @@ Cloudflare Pages 那份要手動推：
 #   而 WRANGLER_LOG=debug 顯示前面的 CF API 全回 200 ⇒ 非常難判讀。
 #   ⚠ 「中文路徑但非 git」那組會「部署成功卻回崩潰碼」⇒ 別只看退出碼判成敗，
 #     要看 `wrangler pages deployment list` 或線上指紋。
-# ★ 部署目錄只放要上線的 8 個檔，不要整包根目錄（避免 .git / .wrangler 外洩）。
+# ★ 部署目錄只放要上線的檔，不要整包根目錄（避免 .git / .wrangler 外洩）。
+#   2026-09-25 加：render3d.js 與 vendor/（立體渲染模式）也要跟著複製，
+#   漏了這兩個 CF Pages 那份打開 3D 開關會 404，Netlify 那份因為 publish 是整個根目錄不會漏。
 $dist = Join-Path $env:TEMP "bricks-dist"   # 0916 修：原本寫成 "$env:TEMP\bricks-dist"，反斜線在某次補丁裡被吃掉，變成一個展不開的變數名
 if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }   # 上一次的殘留不要跟著上線
 New-Item -ItemType Directory -Force $dist | Out-Null
-Copy-Item index.html,game.js,styles.css,sw.js,manifest.webmanifest $dist
+Copy-Item index.html,game.js,render3d.js,styles.css,sw.js,manifest.webmanifest $dist
 Copy-Item -Recurse -Force icons $dist
+Copy-Item -Recurse -Force vendor $dist
 # ⚠ 0916 二修:**wrangler 那一行的目錄要寫展開後的絕對路徑,不可以用變數**。
 #   hook `zero-pii-guard` 讀的是「原始指令字串」,shell 還沒展開 ⇒ 它看到字面 "$dist",
 #   掃不到目錄就 fail-closed 直接拒絕放行(訊息:「掃不到部署目錄,拒絕放行」)。

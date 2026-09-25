@@ -1,8 +1,10 @@
-const CACHE_NAME = "breakout-pwa-v24";
+const CACHE_NAME = "breakout-pwa-v25";
 const ASSETS = [
   "./",
   "./styles.css",
   "./game.js",
+  "./render3d.js",
+  "./vendor/three.module.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

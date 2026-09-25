@@ -524,6 +524,27 @@ canvas {
   background: linear-gradient(180deg, #10345f, #122640 60%, #0c1c32);
 }
 
+/* 🧊 立體渲染(2026-09-25):#gameCanvas3d 是新的 WebGL 畫布,平常關著;
+   打開「立體渲染」設定後,#gameCanvas 疊在它上面變透明(只畫危險線／道具／子彈／
+   狀態列這些非實體疊層),露出底下這層畫地板、磚塊、板子、球的 3D 場景。
+   兩塊都用 position:absolute 疊在同一個 .canvas-wrap(它已經是 position:relative)。 */
+#gameCanvas3d {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  display: none;
+}
+
+body.mode-3d #gameCanvas3d {
+  display: block;
+}
+
+body.mode-3d #gameCanvas {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+
 .progress-wrap {
   position: absolute;
   left: 14px;

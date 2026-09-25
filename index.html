@@ -91,9 +91,11 @@
           <label><input id="setupSfxToggle" type="checkbox"> 音效</label>
           <label><input id="setupHapticsToggle" type="checkbox"> 震動</label>
           <label><input id="setupAssistToggle" type="checkbox"> 卡關輔助</label>
+          <label><input id="setupRender3dToggle" type="checkbox"> 立體渲染（3D）</label>
         </div>
         <p class="setup-note">卡關輔助：同一關失誤兩次後自動把板子加寬，過關後收回。</p>
         <p class="setup-note">板子長度：接不到球就調長一點（越長越容易），想要更難就調短。遊戲中的設定選單也能隨時改。</p>
+        <p class="setup-note">立體渲染：把磚牆、板子、球換成立體方塊來畫，玩法與紀錄完全不變；需要網路伺服器（不能直接雙擊 index.html），舊裝置若不支援會自動退回原本畫面。</p>
 
         <div class="volume-settings" aria-label="音量設定">
           <label>
@@ -234,6 +236,7 @@
       </header>
 
       <section class="canvas-wrap">
+        <canvas id="gameCanvas3d" aria-hidden="true"></canvas>
         <canvas id="gameCanvas" width="900" height="560" aria-label="打磚塊遊戲畫面"></canvas>
         <div id="effectHud" class="effect-hud" aria-label="道具狀態"></div>
         <div class="progress-wrap" aria-label="關卡進度">
@@ -257,6 +260,7 @@
             <label><input id="sfxToggle" type="checkbox"> 音效</label>
             <label><input id="hapticsToggle" type="checkbox"> 震動</label>
             <label><input id="assistToggle" type="checkbox"> 卡關輔助</label>
+            <label><input id="render3dToggle" type="checkbox"> 立體渲染（3D）</label>
             <label class="settings-select">
               板子長度
               <select id="paddleSizeSelectInGame">
