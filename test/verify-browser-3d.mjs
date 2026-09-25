@@ -55,18 +55,25 @@ async function newErrorTrackedPage(browser, opts = {}) {
   return { context, page, errors };
 }
 
-// 第一次造訪 sw.js 會 clients.claim() 觸發一次自動 reload，跟 verify-browser.mjs 同一顆雷。
 async function settle(page) {
   await page.waitForLoadState("load");
-  await page.waitForTimeout(1000);
   await page.waitForSelector("#setupRender3dToggle");
 }
 
 const browser = await launch();
 
 // ── ① 從設定頁打開立體渲染 → 進遊戲 → 場景真的同步到球場資料 ──────────────────────
+//    ⚠ 這裡跟下面②都用 context 選項 serviceWorkers:"block"——這支測試在意的是
+//      3D 渲染本身，不是 PWA/離線行為(那是 verify-browser.mjs 的工作)。
+//      2026-09-25 實測踩過一次：對著剛部署完的 netlify.app(SW 是第一次真的裝上去)，
+//      sw.js clients.claim() 觸發的 window.location.reload() 會在 settle() 放行後
+//      幾百毫秒才發生，剛好卡在「勾選開關/按開始/點畫布」這段互動的正中間——整段操作
+//      被一次 reload 攔腰打斷，畫面被換回最初的設定頁，症狀完全不像「reload 打斷了」，
+//      反而很像轉橫向後版面跑掉、或設定沒生效，查了很久才抓到真因。**固定多睡幾秒**
+//      能降低撞見的機率但躲不掉(reload 的時間點取決於下載/安裝 SW 與其預先快取清單
+//      要花多久，本來就跟網路狀況一起飄)——乾脆整支測試都不裝 SW，從根上拿掉這個變因。
 {
-  const { context, page, errors } = await newErrorTrackedPage(browser);
+  const { context, page, errors } = await newErrorTrackedPage(browser, { serviceWorkers: "block" });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await settle(page);
 
@@ -77,7 +84,13 @@ const browser = await launch();
   // 動態 import 三 Three.js 需要一點時間；另外這類遊戲多半要點一下畫布才真的開始倒數。
   await page.waitForTimeout(1500);
   await page.locator("#gameCanvas").click({ position: { x: 40, y: 300 } }).catch(() => {});
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(300);
+  // ⚠ 這支測試接下來要做一長串斷言(讀 3D 場景、比對顏色、轉橫向…)，沒人在幫球接板子，
+  //   球真的會在幾秒內掉出畫面把這一局結束、畫面跳回設定頁——那不是 bug，是正常的遊戲結果，
+  //   卻會讓下面找 #settingsBtn 的那一步「找不到看得到的按鈕」而假紅(在較慢的主機上更容易中)。
+  //   凍結 state.running 只是停掉世界更新，render() 仍然每幀照跑，3D 場景照樣看得到。
+  await page.evaluate(() => { state.running = false; });
+  await page.waitForTimeout(500);
 
   const layout = await page.evaluate(() => {
     const c3 = document.getElementById("gameCanvas3d");
@@ -120,6 +133,10 @@ const browser = await launch();
   await page.waitForTimeout(1200);
   const afterRotate = await page.evaluate(() => (window.__render3dDebug ? window.__render3dDebug() : null));
   check(!!afterRotate, "轉橫向後 3D 場景還在(沒有整個掛掉)");
+  // ⚠ window.__render3dDebug() 讀的是 Three.js 場景本身，就算畫面已經跳回設定頁，
+  //   它也可能還吐得出「看起來正常」的舊資料(場景物件沒有被清掉)——上面那項單獨測不出
+  //   「其實已經離開遊戲畫面」，一定要另外直接查 gameScreen.hidden 才算數。
+  check(await page.evaluate(() => !gameScreen.hidden), "轉橫向後仍在遊戲畫面(不是被切回設定頁)");
 
   // ── 遊戲中的設定選單也能關掉 3D,切回 2D 要立刻生效 ──
   await page.click("#settingsBtn");
@@ -139,7 +156,7 @@ const browser = await launch();
 
 // ── ② 設定值要記得住(跟其他偏好一樣走 localStorage,不是只活在這次執行期) ──────────
 {
-  const { context, page } = await newErrorTrackedPage(browser);
+  const { context, page } = await newErrorTrackedPage(browser, { serviceWorkers: "block" });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await settle(page);
   await page.check("#setupRender3dToggle");

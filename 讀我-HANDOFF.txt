@@ -30,11 +30,18 @@
     `drawImage`/`toDataURL` 讀 3D 那塊 canvas 的驗收腳本會讀到一片空白，
     誤判成「3D 什麼都沒畫出來」——這輪真的中過一次，花了一段時間才查到根因。
     已在 `render3d.js` 的 WebGLRenderer 設定裡開 `preserveDrawingBuffer:true`。
-  ⚠ 測 render3d.js 載入失敗的退回邏輯時，`page.route()` 攔 `render3d.js` 的請求
-    在**已裝上 Service Worker 的分頁裡攔不到**（SW 自己的 fetch 事件處理常式會把
-    已預先快取的檔案直接端出來，不經過那個路徑）——要用 context 選項
-    `serviceWorkers:"block"`，不是攔截 sw.js 的請求。已寫進 `test/verify-browser-3d.mjs`
-    的檔頭註解，下次維護這條測試不要重踩。
+  ⚠ `test/verify-browser-3d.mjs` 所有情境都開 context 選項 `serviceWorkers:"block"`——
+    這支只在意 3D 渲染本身，裝著 SW 會引來兩顆跟 3D 完全無關的坑，都是真的中過才知道：
+    ① 測 render3d.js 載入失敗的退回邏輯時，`page.route()` 攔 `render3d.js` 的請求在
+      **已裝上 Service Worker 的分頁裡攔不到**（SW 自己的 fetch 事件處理常式會把
+      已預先快取的檔案直接端出來，不經過那個路徑）。
+    ② 對著**剛部署完、這台瀏覽器沒造訪過**的 netlify.app 首次實測：`sw.js` 的
+      `clients.claim()` 觸發的 `window.location.reload()` 會在頁面「看起來已經穩定」
+      之後幾百毫秒才發生，剛好攔腰打斷「勾選開關→按開始→點畫布」這段互動，畫面被換回
+      最初的設定頁——症狀完全不像「reload 打斷了」，反而很像轉橫向後版面跑掉、
+      或設定沒生效，連續好幾支獨立診斷腳本才追出真因。固定多睡幾秒能降低撞見的機率
+      但躲不掉（reload 的時間點跟網路狀況一起飄），乾脆整支測試都不裝 SW。
+    已寫進 `test/verify-browser-3d.mjs` 與 `CLAUDE.md` 對應段，下次維護這條測試不要重踩。
 
 ■③ 鏡頭角度是刻意的取捨,不是沒調好:固定俯角（47°）+ 依球場對角線動態算距離,
   寧可多留白也絕不裁到磚塊或板子。代價是直向手機（球場瘦長）鏡頭被迫拉遠、偏向俯視，
@@ -42,8 +49,8 @@
 
 ■④ 驗收:node --check game.js/render3d.js、既有三支零相依測試(patterns/sharecode/
   sharecard)全綠(3D 完全沒碰到這幾支測的東西)、`test/verify-browser.mjs`(2D 回歸)
-  18 項全綠、新的 `test/verify-browser-3d.mjs` 18 項全綠(含切換/resize/偏好持久化/
-  載入失敗退回 2D)。
+  60 項全綠、新的 `test/verify-browser-3d.mjs` 19 項全綠(含切換/resize/偏好持久化/
+  載入失敗退回 2D、轉橫向後仍在遊戲畫面)。三邊(本機/pages.dev/netlify.app)都跑過。
 
 ■⑤ 部署:CLAUDE.md 的部署段 dist 複製清單已經補上 `render3d.js` 與整個 `vendor/`
   資料夾——Netlify 那份因為 publish 是整個根目錄不會漏,但 **CF Pages 手動部署那份
