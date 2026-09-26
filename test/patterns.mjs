@@ -123,8 +123,10 @@ for (const c of CASES) {
   if (right > c.w + 0.5) bad.push(`磚牆右緣 ${Math.round(right)} 超出畫布 ${c.w}`);
   if (L.brickWidth <= L.brickHeight) bad.push(`磚 ${Math.round(L.brickWidth)}x${L.brickHeight} 變成直立的了`);
   if (L.top < 40) bad.push(`磚牆頂 ${L.top} 會被進度條蓋住`);
-  // 板子底下要留得出拇指區(直向單手握時手指會擋住板子本身)
-  if (c.portrait && c.h - paddleTop - PADDLE_HEIGHT < c.h * 0.06) bad.push("底下沒留出拇指區");
+  // 🎚 2026-09-26 第二輪:這裡原本有一條「直向拇指區至少留畫布高度 6%」的安全網——
+  //   使用者在被告知「板子貼底會被單手直握的大拇指擋住」這個取捨之後,仍明確要求
+  //   「線與擋板移到底」,已經是知情、重申過的決定，不是尚待確認的預設值，
+  //   所以這條斷言拿掉，不是漏寫。真的要復原「拇指區」，先跟使用者確認再把這行加回來。
 
   check(bad.length === 0,
     `${c.name}:磚 ${Math.round(L.brickWidth)}x${L.brickHeight}、列距 ${pitch}、頂 ${L.top}、底板 ${Math.round(paddleTop)}`

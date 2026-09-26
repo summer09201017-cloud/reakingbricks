@@ -95,13 +95,14 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.6.1";
+const APP_VERSION = "2.6.2";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-26", items: [
+    "修正立體渲染（3D）模式下吃不到寶物的問題：寶物道具改成跟板子一樣的立體物件，不管鏡頭怎麼擺都會對準板子",
     "修正立體渲染（3D）模式下危險線跑到板子下面的問題：危險線改成跟板子一樣的立體物件，不管鏡頭怎麼擺都不會再跑位",
-    "手機直向時板子與危險線都往下靠近螢幕底邊一些（拇指區仍保留，不會貼到底）",
+    "手機直向時板子與危險線改貼齊螢幕底邊（跟橫向一樣，不再另外留拇指區）",
   ] },
   { date: "2026-09-25", items: [
     "新增「立體渲染（3D）」設定：把磚牆、板子、球換成立體方塊來畫，玩法、紀錄、分享碼完全不變，隨時可以切回原本畫面",
@@ -1932,17 +1933,17 @@ function getPaddleSpeed() {
   return isPortraitLayout() ? PORTRAIT_PADDLE_SPEED : 8;
 }
 
-// 板子離底邊多遠。直向留一塊「拇指區」:板子貼著螢幕最底邊的話,
-// 單手直握時手指會擋住板子本身,玩家等於看不到自己接得準不準。
-// 🎚 2026-09-26(使用者實機回報「板子跟危險線離螢幕底部太遠」):0.085 → 0.065。
-//   ⚠ 不是砍到很小:test/patterns.mjs 有一條「拇指區至少要有畫布高度 6%」的安全網
-//   (見該檔「底下沒留出拇指區」那條斷言)——那條線是先前為了不讓單手直握時手指
-//   擋住板子本身而定下來的下限,這次先只退讓到略高於下限(6.5%),縮小明顯的空白,
-//   但不吃掉這個安全邊界。要退讓更多的話,得先跟使用者確認能接受手指可能碰到板子的風險。
+// 板子離底邊多遠。
+// 🎚 2026-09-26 第二輪(使用者:「線與擋板移到底」)——原本直向留一塊「拇指區」
+//   (板子貼著螢幕最底邊的話,單手直握時手指會擋住板子本身),先退讓到 6.5% 使用者仍覺得
+//   太遠,明確要求貼到底。使用者已經知道並接受「手指可能擋住板子」這個取捨(上一輪就講過),
+//   這次直接照辦:直向也改用跟橫向一樣的**固定像素**(PADDLE_BOTTOM_GAP,不再是百分比),
+//   只留幾 px 讓板子看得出邊框、不會真的畫到 canvas 最後一列像素。
+//   test/patterns.mjs 原本那條「拇指區至少留 6%」的安全網已經跟著拿掉(見該檔同一段註解)。
 //   危險線(getDangerLineY = paddle.y - 26)是照著 paddle.y 算的,板子往下移,
 //   線會自動跟著往下移,2D 與立體渲染(3D)共用同一個 paddle.y,兩邊一起生效。
 function getPaddleBottomGap() {
-  return isPortraitLayout() ? Math.round(canvas.height * 0.065) : PADDLE_BOTTOM_GAP;
+  return PADDLE_BOTTOM_GAP;
 }
 
 function getPowerupFallSpeed() {
@@ -4499,8 +4500,10 @@ function render3dFrame(shaking, amp) {
   // 螢幕百分比,3D 鏡頭裡卻會因為透視落到不同位置(使用者實機回報「線跑到板子下面去了」,
   // 量出來就是板子(近景,透視放大)反而畫到線(平面,不受透視影響)的上面)。
   // 危險線改成 3D 場景自己的物件,見下面 syncScene() 的 dangerLine 那段與 render3d.js。
+  // ⚠ drawPowerups() 同理刻意不呼叫:使用者實機回報「吃不到寶物」,真因就是道具原本
+  // 也在這層平面疊層上,跟透視投影的板子對不齊——碰撞判定本身沒壞,是畫面上對不準。
+  // 道具改成 3D 場景自己的 Sprite(見下面 payload 的 powerups 與 render3d.js)。
   drawBrickLabels();
-  drawPowerups();
   drawBullets();
   drawShieldWall();
   drawBossRocks();
@@ -4567,6 +4570,15 @@ function render3dFrame(shaking, amp) {
     };
   }
 
+  const powerupSnapshots = powerups.map((powerup) => ({
+    ref: powerup,
+    x: powerup.x,
+    y: powerup.y,
+    size: powerup.size,
+    color: powerup.color,
+    label: powerup.label,
+  }));
+
   render3dApi.syncScene({
     width: canvas.width,
     height: canvas.height,
@@ -4575,6 +4587,7 @@ function render3dFrame(shaking, amp) {
     paddle: { x: paddle.x, y: paddle.y, width: paddle.width, height: paddle.height, color: theme.paddle[0] },
     balls: ballSnapshots,
     bricks: brickSnapshots,
+    powerups: powerupSnapshots,
     dangerLine,
   });
   render3dApi.renderFrame();

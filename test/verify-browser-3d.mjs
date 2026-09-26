@@ -126,6 +126,41 @@ const browser = await launch();
     debug ? `line z=${debug.dangerLinePos[2]} vs paddle z=${debug.paddlePos[2]}` : "",
   );
 
+  // 🎁 2026-09-26 使用者實機回報:立體模式下吃不到寶物。真因跟危險線同一顆坑——道具
+  // 原本也畫在 2D 疊層(平面座標),跟透視投影的板子對不齊,玩家對著畫面上的道具去接,
+  // 板子的實際位置(3D)卻不在那裡。碰撞判定(updatePowerups())本身完全沒壞,是畫面對不準。
+  // 改法是把道具也做成 3D 場景的 Sprite(render3d.js),跟板子吃同一套透視。
+  // 這裡直接塞一顆道具在板子正上方一小段距離,讓它自然落下,驗證「真的會被接住」——
+  // 不是只驗 3D 物件存在,是驗證端到端的遊戲結果(道具消失 + 效果生效),
+  // 對齊壞掉的話,球會落在錯的位置,這個斷言就抓得到(碰撞看的是遊戲座標,不是螢幕像素,
+  // 但如果玩家因為畫面對不準而移動板子到錯的位置,這裡故意直接塞在正上方繞過那一步,
+  // 專門驗證「對齊修好之後,道具本身確實會進 3D 場景、碰撞路徑也還是通的」)。
+  const powerupTest = await page.evaluate(async () => {
+    const p = paddle;
+    const marker = {};
+    powerups.length = 0;
+    powerups.push({ x: p.x + p.width / 2, y: p.y - 60, vy: 3, size: 20, type: "laser", label: "GUN", color: "#ff93db", __testMarker: marker });
+    const beforeGunTimer = state.gunTimer;
+    await new Promise((r) => requestAnimationFrame(r)); // 至少讓 render3dFrame() 跑過一次才會同步進 3D 場景
+    const midDebug = window.__render3dDebug ? window.__render3dDebug() : null;
+    // 上面已經把 state.running 凍住(球不落出畫面);這裡要讓它真的落到板子上才驗得出
+    // 「接得到」，跑完立刻凍回去，不影響這支測試接下來的其他斷言。
+    state.running = true;
+    await new Promise((r) => setTimeout(r, 1200));
+    state.running = false;
+    // ⚠ 不能斷言「陣列變空」:這 1.2 秒球是真的在跑,途中打破磚塊可能又隨機掉出
+    // 別顆道具,那不是 bug。用一開始塞進去的 marker 物件精準認出「我塞的那顆」還在不在。
+    return {
+      powerupCountIn3d: midDebug ? midDebug.powerupCount : null,
+      myPowerupStillThere: powerups.some((x) => x.__testMarker === marker),
+      gunTimerBefore: beforeGunTimer,
+      gunTimerAfter: state.gunTimer,
+    };
+  });
+  check(powerupTest.powerupCountIn3d === 1, "塞一顆道具進去，3D 場景裡真的多了一個 Sprite", `count=${powerupTest.powerupCountIn3d}`);
+  check(!powerupTest.myPowerupStillThere, "塞的那顆道具落到板子上後從遊戲陣列裡消失（真的被接住，不是卡住或穿過去）");
+  check(powerupTest.gunTimerAfter > powerupTest.gunTimerBefore, "接住的效果真的生效了（雷射計時器從 0 變成有值，不是只消失沒發生作用）", `${powerupTest.gunTimerBefore} → ${powerupTest.gunTimerAfter}`);
+
   // preserveDrawingBuffer 修好之後，這塊畫布真的讀得到不只一種顏色（不是一片死黑）。
   const pixelColors = await page.evaluate(() => {
     const c3 = document.getElementById("gameCanvas3d");

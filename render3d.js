@@ -1,10 +1,16 @@
 // render3d.js —— 打磚塊「立體渲染(3D)」模式的畫面層(2026-09-25)。
 //
 // ★ 設計原則:這支檔案**完全不知道遊戲規則**,只認 game.js 每幀餵給它的一份純資料快照
-//   (板子/球/磚塊的座標、尺寸、顏色)。物理、關卡、寶物、Boss、分享碼、存讀檔全部留在
+//   (板子/球/磚塊/道具的座標、尺寸、顏色)。物理、關卡、寶物、Boss、分享碼、存讀檔全部留在
 //   game.js 裡一個字都沒動——3D 模式只是換了一顆鏡頭去看同一份 2D 座標,不是另開一個引擎。
-//   危險線／道具／子彈／護盾條／浮動分數／狀態列這些「不是實體方塊」的東西,
-//   仍然畫在原本的 2D canvas 上、疊在這層 3D 場景前面(見 game.js 的 render3dFrame())。
+//   子彈／護盾條／浮動分數／狀態列這些不需要精準對位的次要提示,仍然畫在原本的 2D canvas
+//   上、疊在這層 3D 場景前面(見 game.js 的 render3dFrame())——**危險線與寶物道具則不是**:
+//   2026-09-26 兩輪使用者實機回報都指向同一個真因,見下面 danger line 與 powerup 段落的說明。
+//   ⚠ 教訓(寫給以後要加新疊層元素的人):3D 場景裡任何**玩家需要拿去跟板子/球比對位置**的
+//   東西(危險線要判斷還有多少緩衝、寶物要對準板子接住),哪怕它本身邏輯上是平面的,
+//   只要要跟 3D 物件對齊,就得進 3D 場景本身、吃同一套透視投影——2D 疊層永遠是「固定螢幕
+//   百分比」的平面映射,跟透視投影不是同一套數學,兩邊看同一個 canvasY 會落在不同螢幕位置。
+//   純粹「好看但不用對位」的東西(分數飄字、狀態列文字)才適合留在 2D 疊層。
 //
 // ★ 用 ES module 是刻意的,不是隨手:要在 game.js(classic script,file:// 也要能直接雙擊打開)
 //   裡安全地用 Three.js,又不想讓所有玩家(包含只玩 2D 的人)都多下載一份 Three.js,
@@ -40,6 +46,9 @@ let paddleMesh = null;
 let dangerLineMesh = null;
 const ballMeshes = [];
 const brickEntries = new Map(); // 用磚塊物件本身當 key(同一顆磚在存活期間物件參照不變)
+const powerupEntries = new Map(); // 同上,key 是道具物件本身
+const powerupTextureCache = new Map(); // key = "顏色|字樣",同一種道具全場共用一張貼圖
+const POWERUP_HEIGHT = 16; // 離地高度,跟球心(半徑約 8~13)、磚塊厚度(20)同一個量級,不會浮太高
 
 let lastWidth = 0;
 let lastHeight = 0;
@@ -108,6 +117,11 @@ function init(canvasEl) {
     firstBallPos: ballMeshes[0] ? ballMeshes[0].position.toArray().map((n) => Math.round(n)) : null,
     dangerLineVisible: dangerLineMesh.visible,
     dangerLinePos: dangerLineMesh.position.toArray().map((n) => Math.round(n)),
+    powerupCount: powerupEntries.size,
+    firstPowerupPos: (() => {
+      const first = powerupEntries.values().next().value;
+      return first ? first.position.toArray().map((n) => Math.round(n)) : null;
+    })(),
   });
 }
 
@@ -207,6 +221,75 @@ function syncBricks(bricks, offsetX, offsetZ) {
   }
 }
 
+// 🎁 寶物道具(2026-09-26):使用者實機回報「吃不到寶物」——真因跟危險線同一顆坑:
+//   道具原本畫在 2D 疊層(平面座標),板子是透視投影的 3D 物件,兩者對不齊,玩家對著
+//   螢幕上看到的道具去接,板子(3D)的實際位置卻不在那裡。碰撞判定本身完全沒壞
+//   (updatePowerups() 比對的是 powerup.x/y 跟 paddle.x/y/width/height,2D/3D 共用同一份,
+//   從頭到尾沒被 3D 模式動過)——玩家看得到、卻對不準,才是「吃不到」的真正原因。
+//   修法跟危險線一樣:道具也進 3D 場景,吃同一顆鏡頭。用 THREE.Sprite(永遠面向鏡頭的
+//   內建billboard)而不是一般 Mesh,不用像危險線/磚塊那樣自己算貼合鏡頭角度的旋轉。
+//   貼圖用 Canvas 現畫一次、以「顏色+字樣」為 key 快取,同一種道具(GUN/WIDE/…)全場共用
+//   同一張圖,不會每顆道具都重畫一次。
+function getPowerupTexture(color, label) {
+  const key = color + "|" + label;
+  let tex = powerupTextureCache.get(key);
+  if (tex) {
+    return tex;
+  }
+  const size = 128;
+  const off = document.createElement("canvas");
+  off.width = size;
+  off.height = size;
+  const c2d = off.getContext("2d");
+  const r = 26;
+  const inset = 6;
+  c2d.beginPath();
+  c2d.moveTo(inset + r, inset);
+  c2d.arcTo(size - inset, inset, size - inset, size - inset, r);
+  c2d.arcTo(size - inset, size - inset, inset, size - inset, r);
+  c2d.arcTo(inset, size - inset, inset, inset, r);
+  c2d.arcTo(inset, inset, size - inset, inset, r);
+  c2d.closePath();
+  c2d.fillStyle = color;
+  c2d.fill();
+  c2d.strokeStyle = "#ffffffcc";
+  c2d.lineWidth = 5;
+  c2d.stroke();
+  c2d.fillStyle = "#07203a";
+  c2d.font = "bold 30px Trebuchet MS";
+  c2d.textAlign = "center";
+  c2d.textBaseline = "middle";
+  c2d.fillText(label, size / 2, size / 2 + 2);
+  tex = new THREE.CanvasTexture(off);
+  powerupTextureCache.set(key, tex);
+  return tex;
+}
+
+function syncPowerups(powerups, offsetX, offsetZ) {
+  const alive = new Set();
+  for (let i = 0; i < powerups.length; i += 1) {
+    const snap = powerups[i];
+    alive.add(snap.ref);
+    let sprite = powerupEntries.get(snap.ref);
+    if (!sprite) {
+      const material = new THREE.SpriteMaterial({ map: getPowerupTexture(snap.color, snap.label), transparent: true });
+      sprite = new THREE.Sprite(material);
+      scene.add(sprite);
+      powerupEntries.set(snap.ref, sprite);
+    }
+    const displaySize = snap.size * 1.35; // 比 2D 原尺寸略放大,3D 場景景深一拉遠就容易看不清
+    sprite.scale.set(displaySize, displaySize, 1);
+    sprite.position.set(snap.x - offsetX, POWERUP_HEIGHT, snap.y - offsetZ);
+  }
+  for (const [ref, sprite] of powerupEntries) {
+    if (!alive.has(ref)) {
+      scene.remove(sprite);
+      sprite.material.dispose(); // 只丟這顆自己的 material,貼圖是快取共用的,不能跟著丟
+      powerupEntries.delete(ref);
+    }
+  }
+}
+
 // payload 是 game.js 每幀組好的純資料快照,見該檔 render3dFrame()。
 function syncScene(payload) {
   if (!renderer) {
@@ -238,6 +321,7 @@ function syncScene(payload) {
 
   syncBalls(payload.balls, offsetX, offsetZ);
   syncBricks(payload.bricks, offsetX, offsetZ);
+  syncPowerups(payload.powerups || [], offsetX, offsetZ);
 }
 
 function renderFrame() {
