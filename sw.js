@@ -1,4 +1,4 @@
-const CACHE_NAME = "breakout-pwa-v27";
+const CACHE_NAME = "breakout-pwa-v28";
 const ASSETS = [
   "./",
   "./styles.css",

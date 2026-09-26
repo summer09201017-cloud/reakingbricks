@@ -108,15 +108,26 @@ function init(canvasEl) {
   // 🔬 驗收用的唯讀視窗(canvas-playwright-verify 那套的老問題:3D 場景在畫面裡對不對,
   // 從外面只看得到一張圖,只能靠截圖比對猜——這裡直接把量得到的數字吐出來)。
   // 只給讀取用的數字,不給改場景;真的壞掉就會在這幾個數字上看到不合理的值。
+  // paddleScreenFrac:板子的世界座標投影到螢幕後,換算成「離畫布最下緣還有多遠」的比例
+  // (0 = 剛好貼底、1 = 頂在畫布最上緣)。純數字驗收畫面對不對齊時只看世界座標會被鏡頭的
+  // 取景方式騙過去(見上面 resize() 的長段註解)——這個數字才是真的量「螢幕上看起來」的位置,
+  // 跟使用者拿截圖比對板子離畫面底邊有多遠是同一件事,只是不用真的截圖也能斷言。
+  const screenFrac = (mesh) => {
+    const ndc = mesh.position.clone().project(camera);
+    return (1 - ndc.y) / 2;
+  };
+
   window.__render3dDebug = () => ({
     ballCount: ballMeshes.length,
     brickCount: brickEntries.size,
     cameraPos: camera.position.toArray().map((n) => Math.round(n)),
     paddlePos: paddleMesh.position.toArray().map((n) => Math.round(n)),
     paddleScale: paddleMesh.scale.toArray().map((n) => Math.round(n)),
+    paddleScreenFrac: screenFrac(paddleMesh),
     firstBallPos: ballMeshes[0] ? ballMeshes[0].position.toArray().map((n) => Math.round(n)) : null,
     dangerLineVisible: dangerLineMesh.visible,
     dangerLinePos: dangerLineMesh.position.toArray().map((n) => Math.round(n)),
+    dangerLineScreenFrac: screenFrac(dangerLineMesh),
     powerupCount: powerupEntries.size,
     firstPowerupPos: (() => {
       const first = powerupEntries.values().next().value;
@@ -148,7 +159,33 @@ function resize(width, height) {
   camera.position.set(0, distance * Math.sin(tiltRad), distance * Math.cos(tiltRad));
   camera.up.set(0, 1, 0);
   camera.lookAt(0, 0, 0);
-  camera.updateProjectionMatrix();
+
+  // 🚨 板子貼底(2026-09-26 第三輪):上面這段鏡頭距離是拿「整個球場的對角線」去對稱地
+  // 塞進視野算出來的,而直向手機的球場又窄又長 ⇒ 真正卡住這個距離的其實是「左右不能裁到
+  // 磚牆」(球場寬度相對窄),球場的「縱深」(板子那一端到磚牆那一端)遠比左右塞得進去的
+  // 需求鬆——結果鏡頭距離被寬度那頭撐得比縱深需要的還遠,而 updateProjectionMatrix()
+  // 用的是上下左右對稱的視角,對稱視角的「配額」是照左右的緊繃程度分的,縱深方向明明用
+  // 不到那麼多配額,卻因為對稱硬要分掉,多出來的配額整段留在畫面下方(板子那一端)——
+  // 這才是「板子邏輯座標明明在最底,畫面上卻還有一截空白」的真因,座標從頭到尾沒有錯。
+  // 修法:改用不對稱視錐(off-axis frustum)——左右仍照原本對稱公式(那頭本來就抓得緊,
+  // 不要動,免得引入新的裁切風險),只把「上/下」拆開分別對準板子那一端與磚牆那一端實際
+  // 需要的角度,鏡頭距離完全不變(不影響已經驗過不會裁到左右的那組數字)。
+  const nearPlane = camera.near;
+  const farPlane = camera.far;
+  const sinTilt = Math.sin(tiltRad);
+  const cosTilt = Math.cos(tiltRad);
+  const halfDepth = height / 2; // 板子那一端(近景,+Z)與磚牆那一端(遠景,−Z)離中心的距離
+  const marginNear = 1.12; // 板子那端留一點點餘裕,別讓板子真的貼著像素邊緣被切掉
+  const marginFar = 1.2; // 磚牆/上牆那端留寬一點,反正上方本來就不是玩家在意的區域
+  const tanBottom = ((halfDepth * sinTilt) / Math.max(1, distance - halfDepth * cosTilt)) * marginNear;
+  const tanTop = ((halfDepth * sinTilt) / Math.max(1, distance + halfDepth * cosTilt)) * marginFar;
+  const tanHorizHalf = Math.tan(fovRad / 2) * camera.aspect; // 左右維持原本對稱公式,不動
+  const left = -tanHorizHalf * nearPlane;
+  const right = tanHorizHalf * nearPlane;
+  const bottom = -tanBottom * nearPlane;
+  const top = tanTop * nearPlane;
+  camera.projectionMatrix.makePerspective(left, right, top, bottom, nearPlane, farPlane);
+  camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 
   floorMesh.scale.set(width * 1.06, height * 1.06, 1);
 

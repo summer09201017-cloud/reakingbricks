@@ -126,6 +126,19 @@ const browser = await launch();
     debug ? `line z=${debug.dangerLinePos[2]} vs paddle z=${debug.paddlePos[2]}` : "",
   );
 
+  // 🚨 2026-09-26 第三輪:使用者截圖回報「線與擋板有到最底嗎」——量出來邏輯座標(paddle.y)
+  // 早就在畫布最下緣附近，但鏡頭取景是拿「整個球場對角線」去對稱塞進視野算出來的固定角度，
+  // 直向手機球場又窄又長，鏡頭被左右(不能裁到磚牆)那頭撐得比縱深需要的還遠，多出來的視角
+  // 配額因為對稱硬要分掉，整段留在畫面下方——板子邏輯座標沒錯，錯在鏡頭把它投影到螢幕上
+  // 沒有真的貼到底。paddleScreenFrac 是「板子投影到螢幕後，離最下緣還有多遠」的比例
+  // (0=貼底、1=頂到最上緣)，比截圖比對更精準,也比只看世界座標更誠實——這條測試在
+  // 改用不對稱視錐(off-axis frustum)之前真的會抓到(退版重跑量到 ≈0.27，離貼底還差一大截)。
+  check(
+    typeof debug?.paddleScreenFrac === "number" && debug.paddleScreenFrac > 0.85,
+    "板子投影到螢幕後,真的落在畫面最下面一小段(不是邏輯座標在底、畫面卻還有一大截空白)",
+    typeof debug?.paddleScreenFrac === "number" ? `paddleScreenFrac=${debug.paddleScreenFrac.toFixed(3)}` : `paddleScreenFrac=${debug?.paddleScreenFrac}`,
+  );
+
   // 🎁 2026-09-26 使用者實機回報:立體模式下吃不到寶物。真因跟危險線同一顆坑——道具
   // 原本也畫在 2D 疊層(平面座標),跟透視投影的板子對不齊,玩家對著畫面上的道具去接,
   // 板子的實際位置(3D)卻不在那裡。碰撞判定(updatePowerups())本身完全沒壞,是畫面對不準。

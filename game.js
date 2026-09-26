@@ -95,11 +95,12 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.6.2";
+const APP_VERSION = "2.6.3";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-26", items: [
+    "修正立體渲染（3D）模式下板子明明貼齊底邊、畫面上卻還有一大截空白的問題：鏡頭取景改成不對稱視角，板子與危險線那一端不再浪費視角配額",
     "修正立體渲染（3D）模式下吃不到寶物的問題：寶物道具改成跟板子一樣的立體物件，不管鏡頭怎麼擺都會對準板子",
     "修正立體渲染（3D）模式下危險線跑到板子下面的問題：危險線改成跟板子一樣的立體物件，不管鏡頭怎麼擺都不會再跑位",
     "手機直向時板子與危險線改貼齊螢幕底邊（跟橫向一樣，不再另外留拇指區）",
