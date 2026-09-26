@@ -37,6 +37,7 @@ let leftWall = null;
 let rightWall = null;
 let topWall = null;
 let paddleMesh = null;
+let dangerLineMesh = null;
 const ballMeshes = [];
 const brickEntries = new Map(); // 用磚塊物件本身當 key(同一顆磚在存活期間物件參照不變)
 
@@ -82,6 +83,19 @@ function init(canvasEl) {
   paddleMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), makeStandardMaterial(0xffb84d, { roughness: 0.4, metalness: 0.12 }));
   scene.add(paddleMesh);
 
+  // 🚨 危險線(2026-09-26):原本這條線是畫在 2D 疊層上的平面座標,跟板子/磚塊這些
+  // 走透視投影的 3D 物件用的是兩套完全不同的映射——同一個 canvasY,在 2D 疊層上永遠對應
+  // 固定的螢幕百分比,在 3D 鏡頭裡卻會因為透視而落到完全不同的螢幕位置。使用者實機回報
+  // 「立體模式下,線跑到板子下面去了」,量出來就是這個:板子(透視,近景)反而投影到線
+  // (平面,不受透視影響)的上面。修法是把這條線也做成真正的 3D 物件,跟板子吃同一顆鏡頭、
+  // 同一套透視,兩者的相對位置在任何鏡頭角度下都會是對的——不是再猜一個位移量去湊。
+  dangerLineMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshBasicMaterial({ color: 0xff9aa8, transparent: true, opacity: 0.6 }),
+  );
+  dangerLineMesh.visible = false;
+  scene.add(dangerLineMesh);
+
   // 🔬 驗收用的唯讀視窗(canvas-playwright-verify 那套的老問題:3D 場景在畫面裡對不對,
   // 從外面只看得到一張圖,只能靠截圖比對猜——這裡直接把量得到的數字吐出來)。
   // 只給讀取用的數字,不給改場景;真的壞掉就會在這幾個數字上看到不合理的值。
@@ -92,6 +106,8 @@ function init(canvasEl) {
     paddlePos: paddleMesh.position.toArray().map((n) => Math.round(n)),
     paddleScale: paddleMesh.scale.toArray().map((n) => Math.round(n)),
     firstBallPos: ballMeshes[0] ? ballMeshes[0].position.toArray().map((n) => Math.round(n)) : null,
+    dangerLineVisible: dangerLineMesh.visible,
+    dangerLinePos: dangerLineMesh.position.toArray().map((n) => Math.round(n)),
   });
 }
 
@@ -208,6 +224,17 @@ function syncScene(payload) {
   paddleMesh.scale.set(Math.max(1, p.width), PADDLE_DEPTH, Math.max(1, p.height));
   paddleMesh.position.set(p.x + p.width / 2 - offsetX, PADDLE_DEPTH / 2, p.y + p.height / 2 - offsetZ);
   paddleMesh.material.color.set(p.color);
+
+  const dl = payload.dangerLine;
+  dangerLineMesh.visible = !!(dl && dl.active);
+  if (dl && dl.active) {
+    const LINE_THICKNESS = 4; // 沿球場深度方向(Z)的厚度,矮矮貼在地板上一條,不是一片牆
+    const LINE_HEIGHT = 3;    // 離地高度,矮到不會擋視線,但夠讓它跟地板分出層次
+    dangerLineMesh.scale.set(payload.width - 28, LINE_HEIGHT, LINE_THICKNESS);
+    dangerLineMesh.position.set(0, LINE_HEIGHT / 2, dl.y - offsetZ);
+    dangerLineMesh.material.color.set(dl.color);
+    dangerLineMesh.material.opacity = dl.opacity;
+  }
 
   syncBalls(payload.balls, offsetX, offsetZ);
   syncBricks(payload.bricks, offsetX, offsetZ);

@@ -111,6 +111,21 @@ const browser = await launch();
   check(!!debug && debug.brickCount === aliveBricks, "3D 場景的磚塊 mesh 數量 == 遊戲裡存活的磚塊數", debug ? `${debug.brickCount} vs ${aliveBricks}` : "");
   check(!!debug && debug.ballCount === ballCount, "3D 場景的球 mesh 數量 == 遊戲裡的球數", debug ? `${debug.ballCount} vs ${ballCount}` : "");
 
+  // 🚨 2026-09-26 使用者實機回報:立體模式下危險線跑到板子下面去了。真因是危險線曾經
+  // 只畫在 2D 疊層上(平面座標,固定螢幕百分比),板子是透視投影的 3D 物件——同一個
+  // canvasY 在兩套投影下對不上,板子(近景)反而畫到「線」上面。改法是把危險線也做成
+  // 3D 場景自己的物件(render3d.js 的 dangerLineMesh),跟板子吃同一顆鏡頭。這裡直接比
+  // 兩個 3D mesh 的 Z 座標(對應 2D 的 canvasY),不量螢幕像素——鏡頭角度以後再怎麼調,
+  // 只要 Z 座標的相對順序對,畫面上的相對順序就一定對,比截圖比對更不會因為調鏡頭而假紅。
+  const normalDifficultyHasDescend = await page.evaluate(() => isDescendActive());
+  check(normalDifficultyHasDescend, "預設難度(標準)這一關本來就會顯示危險線(前提要成立，下面兩項才有意義)");
+  check(!!debug && debug.dangerLineVisible === true, "3D 場景裡的危險線物件是顯示的");
+  check(
+    !!debug && debug.dangerLinePos[2] < debug.paddlePos[2],
+    "危險線在 3D 場景裡的 Z 座標小於板子(對應「線在板子上方」，順序不能因為鏡頭透視而顛倒)",
+    debug ? `line z=${debug.dangerLinePos[2]} vs paddle z=${debug.paddlePos[2]}` : "",
+  );
+
   // preserveDrawingBuffer 修好之後，這塊畫布真的讀得到不只一種顏色（不是一片死黑）。
   const pixelColors = await page.evaluate(() => {
     const c3 = document.getElementById("gameCanvas3d");
