@@ -29,8 +29,8 @@
 
 ## 現況（2026-09-26）
 
-**v2.6.3 / sw v28**（修正立體渲染鏡頭取景留白的問題——板子邏輯座標明明在最底，畫面上卻還有
-一大截空白；上一版 v2.6.2 / sw v27 是同一天稍早的寶物對齊 + 直向板子貼齊底邊，v2.6.1 / sw v26
+**v2.6.4 / sw v29**（生命數調高 + LIFE 寶物更容易掉到；上一版 v2.6.3 / sw v28 是同一天稍早的
+立體渲染鏡頭取景留白修正，v2.6.2 / sw v27 是寶物對齊 + 直向板子貼齊底邊，v2.6.1 / sw v26
 是危險線對齊修正，v2.6.0 / sw v25 是 09-25 的立體渲染 3D 模式初版，v2.5.0 / sw v24 是 09-17 的
 板子長度五段可選）。
 
@@ -72,6 +72,9 @@
 - `test/patterns.mjs`：關卡圖案自我檢查（零相依）。
 - `test/sharecode.mjs`：分享碼格式契約檢查（零相依）。
 - `test/sharecard.mjs`：每日挑戰分享圖卡自我檢查（零相依，用假 ctx 驗「畫面上印了什麼字」）。
+- `test/balance.mjs`：難度/生命平衡自我檢查（零相依，原地挖出 `DIFFICULTIES`/`POWERUP_*`/
+  `pickPowerupType()` 跑統計）。改難度數字或寶物權重前後都要跑，這類純數字調整沒有畫面可以
+  肉眼驗，最容易在下次調整時被誤改回去而沒人發現。
 - `test/verify-browser.mjs`：真瀏覽器驗收（`playwright-core` + 系統 Edge／Chrome，可打本機或線上）。
   含直向可玩性與「玩到一半轉手機」的迴歸（磚塊／球／板子有沒有跑到畫面外、下壓進度有沒有被偷走）。
 - `test/verify-browser-3d.mjs`：立體渲染模式的真瀏覽器驗收（另開一支，不跟上面那支混在一起）。
@@ -186,6 +189,7 @@ node --check sw.js
 node test/patterns.mjs
 node test/sharecode.mjs
 node test/sharecard.mjs
+node test/balance.mjs
 ```
 
 改過 UI、按鈕或圖卡，再跑一次真瀏覽器驗收 —— 它會**實際點下去**，抓得到「按了沒反應」
@@ -279,7 +283,27 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
 
 - `game.js` 已是大型單檔。若繼續新增功能，建議優先拆成 `state.js`、`render.js`、`audio.js`、`storage.js`、`pwa.js` 等模組。
 - `localStorage` 紀錄只存在目前瀏覽器與裝置。若要跨裝置排行榜，需要另接後端或 Netlify Functions。
-- 寶物掉落次數由 `POWERUP_LIMIT_PER_TYPE` 控制。
+- 寶物掉落次數由 `POWERUP_LIMIT_PER_TYPE`（16 種寶物共用的預設上限）控制，
+  單一寶物想開特例就加進 `POWERUP_LIMIT_OVERRIDES`（目前只有 `life`）。
+  被抽到的機率原本是均勻亂數，`pickPowerupType()` 改成看 `POWERUP_WEIGHT_OVERRIDES`
+  加權（目前只有 `life` 加權，其餘 15 種維持均勻），別直接改回
+  `Math.floor(random() * list.length)` 那種寫法，會把加權吃掉。
+  `test/balance.mjs` 守著這幾個數字的相對大小（不是絕對值），改動前後都要跑。
+- **難度數字調高過一輪（2026-09-26）**：使用者反映「常死掉」，`DIFFICULTIES.*.lives`
+  三檔都 +1（易 4→5／中 3→4／難 2→3），`life` 寶物的單場上限從跟其他寶物一樣的 2 顆
+  拉到 4 顆、被抽到機率也加權到約均勻值的 2.4 倍。往上調沒問題，**往下調回舊數字前
+  先想一下是不是又要面對同一個抱怨**——這不是隨手調的，是使用者明確反映後的回應。
+- **手機瀏覽器的「如何退出全螢幕」提示不是這個網站畫的,也修不掉（2026-09-26 查證）**：
+  使用者截圖問「下面的全螢幕兩行字，顯示太久了，或不需要顯示」——那個白底圓角提示框
+  是 **Android Chrome 自己的系統 UI**（呼叫 `Element.requestFullscreen()` 時瀏覽器
+  自動疊上去的安全提示，不讓網頁能悄悄困住使用者出不了全螢幕），這個 repo(以及艦隊裡
+  其他任何網站)的原始碼裡都沒有那串文字，`grep` 全站找不到來源。`root.requestFullscreen(
+  { navigationUI: "hide" })` 已經是能做的最佳嘗試，Chromium 官方 issue tracker
+  （crbug 40057906 / 324520861）明確記著這個提示**目前沒有網頁端可以關掉或縮短顯示時間
+  的正式做法**——唯一的「解法」是瀏覽器安全性 bug 被回報過，不是給網站用的正當管道。
+  真要徹底避開，只能不呼叫原生 Fullscreen API、改用 CSS 假全螢幕（`position:fixed`
+  蓋滿視窗），但那樣會失去真正全螢幕的好處(仍看得到網址列)，是不同的取捨,不是同一個
+  問題的修法——沒有使用者明確要求改用假全螢幕之前，不要自己動這塊。
 - 目前版本號由 `APP_VERSION` 控制，更新內容由 `CHANGELOG` 控制。
   `CHANGELOG` 是 `{ date, items }` 陣列，**最新一批放最前面**；發佈日期 `APP_DATE`
   由 `CHANGELOG[0].date` 推導，不要另外寫死一份日期（會忘了同步改）。

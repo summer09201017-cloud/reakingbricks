@@ -95,11 +95,12 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.6.3";
+const APP_VERSION = "2.6.4";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-26", items: [
+    "生命數調高（休閒4→5／標準3→4／挑戰2→3），並讓「補命」寶物更容易掉到、單場上限也拉寬，常死掉的話應該會輕鬆一些",
     "修正立體渲染（3D）模式下板子明明貼齊底邊、畫面上卻還有一大截空白的問題：鏡頭取景改成不對稱視角，板子與危險線那一端不再浪費視角配額",
     "修正立體渲染（3D）模式下吃不到寶物的問題：寶物道具改成跟板子一樣的立體物件，不管鏡頭怎麼擺都會對準板子",
     "修正立體渲染（3D）模式下危險線跑到板子下面的問題：危險線改成跟板子一樣的立體物件，不管鏡頭怎麼擺都不會再跑位",
@@ -219,6 +220,11 @@ const BASE_SFX_GAIN = 0.75;
 const MAX_BALLS = 10;
 const MAX_LIVES = 6;
 const POWERUP_LIMIT_PER_TYPE = 2;
+// 2026-09-26:使用者反映常死掉——LIFE 原本跟其他 15 種寶物一樣「均勻亂數挑一種、單場最多掉 2 顆」，
+// 換算下來一整場很難補到命。LIFE 額度單獨拉高、被抽到的機率也單獨加權（見 pickPowerupType()），
+// 其餘 15 種維持原樣，不稀釋玩家原本很愛用的道具（WIDE/多球/雷射...）出現頻率。
+const POWERUP_LIMIT_OVERRIDES = { life: 4 };
+const POWERUP_WEIGHT_OVERRIDES = { life: 2.4 };
 const GUN_DURATION = 14;
 const BIG_BALL_DURATION = 16;
 const MAGNET_DURATION = 16;
@@ -305,7 +311,7 @@ const DIFFICULTIES = {
   easy: {
     descendSec: 0,  // 休閒不下壓
     label: "休閒",
-    lives: 4,
+    lives: 5, // 2026-09-26:使用者反映常死掉，三檔各 +1（見下面 POWERUP_LIMIT_OVERRIDES 那條一起看）
     paddleWidth: 164,
     ballSpeed: 4.25,
     dropRate: 0.4,
@@ -315,7 +321,7 @@ const DIFFICULTIES = {
   normal: {
     descendSec: 26,
     label: "標準",
-    lives: 3,
+    lives: 4,
     paddleWidth: 136,
     ballSpeed: 4.8,
     dropRate: 0.3,
@@ -325,7 +331,7 @@ const DIFFICULTIES = {
   hard: {
     descendSec: 17,
     label: "挑戰",
-    lives: 2,
+    lives: 3,
     paddleWidth: 116,
     ballSpeed: 5.35,
     dropRate: 0.24,
@@ -3353,20 +3359,33 @@ function updateBricks(step) {
   }
 }
 
+function pickPowerupType(list) {
+  const weights = list.map((powerup) => POWERUP_WEIGHT_OVERRIDES[powerup.type] ?? 1);
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  let roll = random() * total;
+  for (let i = 0; i < list.length; i += 1) {
+    roll -= weights[i];
+    if (roll <= 0) {
+      return list[i];
+    }
+  }
+  return list[list.length - 1];
+}
+
 function spawnPowerup(brick) {
   if (random() > getDifficultyConfig().dropRate) {
     return;
   }
 
   const availablePowerups = POWERUP_TYPES.filter(
-    (powerup) => (powerupSpawnCounts[powerup.type] ?? 0) < POWERUP_LIMIT_PER_TYPE,
+    (powerup) => (powerupSpawnCounts[powerup.type] ?? 0) < (POWERUP_LIMIT_OVERRIDES[powerup.type] ?? POWERUP_LIMIT_PER_TYPE),
   );
 
   if (availablePowerups.length === 0) {
     return;
   }
 
-  const pick = availablePowerups[Math.floor(random() * availablePowerups.length)];
+  const pick = pickPowerupType(availablePowerups);
   powerupSpawnCounts[pick.type] = (powerupSpawnCounts[pick.type] ?? 0) + 1;
   sessionStats.powerupsSpawned += 1;
   powerups.push({
