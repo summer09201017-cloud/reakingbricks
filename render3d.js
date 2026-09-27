@@ -49,6 +49,9 @@ const brickEntries = new Map(); // 用磚塊物件本身當 key(同一顆磚在�
 const powerupEntries = new Map(); // 同上,key 是道具物件本身
 const powerupTextureCache = new Map(); // key = "顏色|字樣",同一種道具全場共用一張貼圖
 const POWERUP_HEIGHT = 16; // 離地高度,跟球心(半徑約 8~13)、磚塊厚度(20)同一個量級,不會浮太高
+const brickLabelTextureCache = new Map(); // key = "字樣|頂面寬高比",同一種字全場共用一張貼圖
+let brickLabelGeometry = null; // 所有磚塊字共用一片 1×1 平面,各自用 scale 貼合自己那顆磚的頂面
+const BRICK_LABEL_LIFT = 0.6; // 貼在頂面上方一點點,不跟頂面搶同一個深度(z-fighting 會閃)
 
 let lastWidth = 0;
 let lastHeight = 0;
@@ -128,6 +131,24 @@ function init(canvasEl) {
     dangerLineVisible: dangerLineMesh.visible,
     dangerLinePos: dangerLineMesh.position.toArray().map((n) => Math.round(n)),
     dangerLineScreenFrac: screenFrac(dangerLineMesh),
+    // 磚塊字(0927):數量要等於「有字的存活磚」,而且每片字都要跟自己那顆磚 x/z 同心、高度剛好在頂面上
+    brickLabelCount: (() => {
+      let n = 0;
+      for (const e of brickEntries.values()) {
+        if (e.label) n += 1;
+      }
+      return n;
+    })(),
+    firstBrickLabelOnBrick: (() => {
+      for (const e of brickEntries.values()) {
+        if (!e.label) continue;
+        const dx = Math.abs(e.label.position.x - e.mesh.position.x);
+        const dz = Math.abs(e.label.position.z - e.mesh.position.z);
+        const y = e.label.position.y;
+        return dx < 0.01 && dz < 0.01 && y > BRICK_DEPTH && y < BRICK_DEPTH + 3;
+      }
+      return null;
+    })(),
     powerupCount: powerupEntries.size,
     firstPowerupPos: (() => {
       const first = powerupEntries.values().next().value;
@@ -233,7 +254,7 @@ function syncBricks(bricks, offsetX, offsetZ) {
     if (!entry) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), makeStandardMaterial(0xffffff));
       scene.add(mesh);
-      entry = { mesh, color: null };
+      entry = { mesh, color: null, label: null, labelKey: null };
       brickEntries.set(snap.ref, entry);
     }
     entry.mesh.scale.set(Math.max(1, snap.width - 3), BRICK_DEPTH, Math.max(1, snap.height - 3));
@@ -246,16 +267,102 @@ function syncBricks(bricks, offsetX, offsetZ) {
       entry.color = snap.color;
       entry.mesh.material.color.set(snap.color);
     }
+    syncBrickLabel(entry, snap);
   }
   // 打掉的磚(或整關換掉的磚)要把 mesh 一起丟掉,不然場上會留著看不見的死物件慢慢漏記憶體。
   for (const [ref, entry] of brickEntries) {
     if (!alive.has(ref)) {
+      if (entry.label) {
+        scene.remove(entry.label);
+        entry.label.material.dispose(); // 貼圖是快取共用的,不跟著丟
+      }
       scene.remove(entry.mesh);
       entry.mesh.geometry.dispose();
       entry.mesh.material.dispose();
       brickEntries.delete(ref);
     }
   }
+}
+
+// 🔢 磚塊字(2026-09-27):使用者截圖回報「2.5D 時許多數字 2 沒在立體的磚塊上,數字 2 還在 2D 上」——
+//   跟危險線(0926)、道具(0926)同一顆坑的**第三次**:耐打度數字／特殊磚字母原本由 game.js 的
+//   drawBrickLabels() 畫在 2D 疊層的平面座標,磚塊本體卻是透視投影的 3D 物件,兩套映射對不上,
+//   整排字就飄在磚牆上方一大片(截圖裡「2」排成整齊的平面格子,磚塊在它們下面)。
+//   修法一樣:字進 3D 場景、吃同一顆鏡頭。這次不用 Sprite(billboard 會浮在磚上方),
+//   改用「躺在那顆磚頂面上的一片平面」——字真的貼在磚上,移動磚在動、磚被打掉,字都跟著走。
+//   貼圖用 Canvas 現畫、以「字樣|頂面寬高比」快取(同一種字全場共用);字色沿用 2D 疊層那套
+//   「淺色字 + 深色描邊」,不管哪個主題、哪種磚色的頂面都看得清楚。
+function getBrickLabelTexture(label, aspect) {
+  const a = Math.max(1, Math.min(6, Math.round(aspect * 4) / 4));
+  const key = label + "|" + a;
+  let tex = brickLabelTextureCache.get(key);
+  if (tex) {
+    return tex;
+  }
+  const h = 64;
+  const w = Math.round(h * a);
+  const off = document.createElement("canvas");
+  off.width = w;
+  off.height = h;
+  const c2d = off.getContext("2d");
+  let fontPx = 50;
+  c2d.font = "bold " + fontPx + "px Trebuchet MS";
+  const maxW = w - 10;
+  const measured = c2d.measureText(label).width;
+  if (measured > maxW) {
+    fontPx = Math.max(16, Math.floor((fontPx * maxW) / measured)); // BOSS 12 這種長字縮到塞得進頂面
+    c2d.font = "bold " + fontPx + "px Trebuchet MS";
+  }
+  c2d.textAlign = "center";
+  c2d.textBaseline = "middle";
+  c2d.lineWidth = 6;
+  c2d.strokeStyle = "#00152dcc";
+  c2d.strokeText(label, w / 2, h / 2 + 2);
+  c2d.fillStyle = "#eaf6ffee";
+  c2d.fillText(label, w / 2, h / 2 + 2);
+  tex = new THREE.CanvasTexture(off);
+  brickLabelTextureCache.set(key, tex);
+  return tex;
+}
+
+function syncBrickLabel(entry, snap) {
+  const label = snap.label || "";
+  if (!label) {
+    if (entry.label) { // 例如 hp 從 2 打成 1,字就要拿掉
+      scene.remove(entry.label);
+      entry.label.material.dispose();
+      entry.label = null;
+      entry.labelKey = null;
+    }
+    return;
+  }
+  const w = Math.max(1, snap.width - 3);
+  const d = Math.max(1, snap.height - 3);
+  const aspect = w / d;
+  const key = label + "|" + Math.round(aspect * 4) / 4;
+  if (!entry.label) {
+    if (!brickLabelGeometry) {
+      brickLabelGeometry = new THREE.PlaneGeometry(1, 1);
+    }
+    const material = new THREE.MeshBasicMaterial({
+      map: getBrickLabelTexture(label, aspect),
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    entry.label = new THREE.Mesh(brickLabelGeometry, material);
+    entry.label.rotation.x = -Math.PI / 2; // 躺平、面朝上;貼圖的「上」對到球場的遠端(螢幕的上方),字不會倒
+    scene.add(entry.label);
+    entry.labelKey = key;
+  } else if (entry.labelKey !== key) { // 被打一下 hp 3→2,換字不換物件
+    entry.label.material.map = getBrickLabelTexture(label, aspect);
+    entry.label.material.needsUpdate = true;
+    entry.labelKey = key;
+  }
+  entry.label.scale.set(w, d, 1);
+  entry.label.position.set(entry.mesh.position.x, BRICK_DEPTH + BRICK_LABEL_LIFT, entry.mesh.position.z);
 }
 
 // 🎁 寶物道具(2026-09-26):使用者實機回報「吃不到寶物」——真因跟危險線同一顆坑:

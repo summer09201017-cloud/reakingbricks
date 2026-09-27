@@ -95,12 +95,13 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.6.5";
+const APP_VERSION = "2.6.6";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
   { date: "2026-09-27", items: [
     "手機／平板按「開始遊玩」「繼續上一局」「玩自訂關卡」時不再自動進全螢幕，畫面底下那兩行「如要退出全螢幕模式…」的瀏覽器提示就不會再自己跳出來；想全螢幕的話按遊戲畫面上的 ⛶ 鈕（電腦版不受影響）",
+    "修正立體渲染（3D）模式下磚塊上的數字／字母沒有貼在立體磚塊上、整排飄在磚牆上方平面位置的問題：字改成貼在每顆磚的頂面上，移動磚在動、磚被打掉，字都跟著走",
   ] },
   { date: "2026-09-26", items: [
     "生命數調高（休閒4→5／標準3→4／挑戰2→3），並讓「補命」寶物更容易掉到、單場上限也拉寬，常死掉的話應該會輕鬆一些",
@@ -4308,32 +4309,10 @@ function drawBricks() {
   }
 }
 
-// 🧊 立體渲染用:磚塊本體交給 3D 場景畫,但耐打度數字／特殊磚字母還是要看得到 ——
-//   從 drawBricks() 拆出「只畫字」這一半，2D 疊層(render3dFrame)才會呼叫它。
-//   ⚠ 顏色刻意跟 drawBricks() 裡那份不同:2D 模式的字是「深色字疊在淺色磚上」，
-//     3D 模式的字浮空疊在 WebGL 畫面上、背後可能是任何顏色，所以改成「淺色字 + 深色描邊」，
-//     不管背後是哪個主題、哪種磚色都看得清楚。
-function drawBrickLabels() {
-  for (let i = 0; i < bricks.length; i += 1) {
-    const brick = bricks[i];
-    if (!brick.alive) {
-      continue;
-    }
-    const label = getBrickLabel(brick);
-    if (!label) {
-      continue;
-    }
-    ctx.font = brick.special === "boss" ? "bold 20px Trebuchet MS" : "bold 14px Trebuchet MS";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#00152dcc";
-    ctx.strokeText(label, brick.x + brick.width * 0.5, brick.y + brick.height * 0.55);
-    ctx.fillStyle = "#eaf6ffee";
-    ctx.fillText(label, brick.x + brick.width * 0.5, brick.y + brick.height * 0.55);
-  }
-}
-
+// 🧊 立體渲染的磚塊字(耐打度數字／特殊磚字母)**不在 2D 疊層畫**(0927 拿掉了 drawBrickLabels()):
+//   它曾經畫在這層的平面座標,跟透視投影的 3D 磚塊對不上,使用者截圖是整排「2」飄在磚牆上方。
+//   跟危險線、道具一樣改成 3D 場景自己的物件——見 render3d.js 的 syncBrickLabel(),
+//   game.js 只在 render3dFrame() 的 brickSnapshots 裡把 label 一起送過去。
 function drawPowerups() {
   for (let i = 0; i < powerups.length; i += 1) {
     const powerup = powerups[i];
@@ -4523,7 +4502,7 @@ function drawStatus() {
 }
 
 // 🧊 立體渲染的每幀進入點:2D canvas 只留「不是實體方塊」的疊層(危險線／道具／子彈／
-//   護盾條／磚塊字／浮動分數／狀態列),球場地板、磚塊、板子、球本體全部交給 render3d.js
+//   護盾條／浮動分數／狀態列),球場地板、磚塊(含磚上的字)、板子、球本體全部交給 render3d.js
 //   畫在底下那層透明的 WebGL canvas(styles.css 的 body.mode-3d 讓兩塊 canvas 疊在一起)。
 //   ⚠ 震屏目前只晃 2D 疊層、沒有晃 3D 鏡頭——3D 場景本身不動,是刻意先簡化的範圍,
 //     要加鏡頭震動之後再補,不影響現有判定與存檔。
@@ -4541,7 +4520,7 @@ function render3dFrame(shaking, amp) {
   // ⚠ drawPowerups() 同理刻意不呼叫:使用者實機回報「吃不到寶物」,真因就是道具原本
   // 也在這層平面疊層上,跟透視投影的板子對不齊——碰撞判定本身沒壞,是畫面上對不準。
   // 道具改成 3D 場景自己的 Sprite(見下面 payload 的 powerups 與 render3d.js)。
-  drawBrickLabels();
+  // ⚠ 磚塊字也不在這裡畫(0927,同一顆坑第三次):見 render3d.js syncBrickLabel() 與下面 brickSnapshots 的 label。
   drawBullets();
   drawShieldWall();
   drawBossRocks();
@@ -4577,6 +4556,7 @@ function render3dFrame(shaking, amp) {
       width: brick.width,
       height: brick.height,
       color: getBrickColor(brick),
+      label: getBrickLabel(brick), // 耐打度數字／特殊磚字母,由 3D 場景貼在磚的頂面上
     });
   }
 

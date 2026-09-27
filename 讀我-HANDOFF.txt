@@ -7,6 +7,39 @@
   roadmap.md             = 待做清單與「刻意不做」的理由
 
 
+★★★★★ 2026-09-27 第六輪（v2.6.5 → v2.6.6 / sw v31 → v32，立體渲染的磚塊字貼到 3D 磚頂面上）
+--------------------------------------------------------------------------------
+使用者拿 0926 截圖問:「打磚塊 2.5D 時,許多的數字 2 都沒在立體的磚塊上,數字 2 還在 2D 上」。
+截圖裡整排「2」排成平面格子飄在磚牆上方,3D 磚塊在它們下面——一看就是 0926 危險線/道具那顆坑的第三次。
+
+■① 真因:磚塊字畫在 2D 疊層,磚塊是 3D 物件,兩套映射對不上
+  game.js render3dFrame() 原本呼叫 drawBrickLabels(),用 brick.x/y 的平面座標把耐打度數字/特殊磚
+  字母畫在 #gameCanvas 疊層上;磚塊本體卻是 render3d.js 透視投影的 Box。同一個 canvasY 在平面疊層
+  是固定螢幕百分比、在 3D 鏡頭裡會因透視落到別處 ⇒ 字永遠飄在磚的「平面位置」。
+
+■② 修法:字進 3D 場景,躺在自己那顆磚的頂面上
+  render3d.js 新增 syncBrickLabel(entry, snap):每顆有字的磚配一片 PlaneGeometry(1,1) 共用幾何、
+  rotation.x = -π/2 躺平、scale 貼合頂面(width-3 × height-3)、position 跟磚 mesh 同 x/z、
+  y = BRICK_DEPTH + 0.6;貼圖用 Canvas 現畫(淺色字 + 深色描邊,沿用疊層那套配色),以
+  「字樣|頂面寬高比」快取共用;hp 3→2 只換 map 不換物件;字沒了(hp→1)或磚被打掉就 remove。
+  MeshBasicMaterial 開 polygonOffset 避免跟頂面 z-fighting、depthWrite 關掉。
+  刻意不用 Sprite:billboard 會浮在磚上方,使用者要的是「數字在立體的磚塊上」。
+  game.js:brickSnapshots 多帶 label: getBrickLabel(brick);drawBrickLabels() 整支拿掉(唯一呼叫點就是
+  render3dFrame);APP_VERSION 2.6.6、CHANGELOG 0927 那批加第二條;sw v32。
+  ★ 鐵則寫進 CLAUDE.md 維護提醒:任何要「對準磚塊/板子」的東西都不可以畫在 2D 疊層——三次了。
+
+■③ 驗收
+  · verify-browser-3d.mjs 加 4 項:先把前 5 顆存活磚 hp 設 2(第 1 關預設難度不一定有多血磚),
+    ①3D 場景磚塊字數 == 有字的存活磚數(__render3dDebug().brickLabelCount)②字跟磚 x/z 同心、
+    高度在磚厚之上(firstBrickLabelOnBrick)③包住 CanvasRenderingContext2D.prototype.fillText 數
+    「疊層畫了幾次 '2'」= 0。⚠ 第一版踩到:烤貼圖也是 canvas 2D fillText("2") 一次,被算成疊層在畫
+    而假紅 ⇒ 只數 this.canvas === #gameCanvas 的。
+  · 突變檢查:git stash 只收 game.js/render3d.js/sw.js、拿新測試打舊碼 ⇒ 新 4 項裡 3 項紅(見 log)。
+  · 本機:五支零相依全綠、verify-browser(2D)全綠、verify-browser-3d 全綠;另用 playwright 截手機直向
+    3D 畫面目視:數字真的貼在每顆磚的頂面上,3 跟 2 都對。
+  · 線上:兩平台 sw v32,再拿 verify-browser-3d 打 pages.dev。
+
+
 ★★★★★ 2026-09-27 第五輪（v2.6.4 → v2.6.5 / sw v29 → v31，手機不再自動進全螢幕）
 --------------------------------------------------------------------------------
 ⚠ sw v30 那一版漏了 CHANGELOG（版本資訊仍印「2026-09-26 更新」與舊的五條），使用者截圖抓到「內容與日期都沒更新」

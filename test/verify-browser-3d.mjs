@@ -111,6 +111,43 @@ const browser = await launch();
   check(!!debug && debug.brickCount === aliveBricks, "3D 場景的磚塊 mesh 數量 == 遊戲裡存活的磚塊數", debug ? `${debug.brickCount} vs ${aliveBricks}` : "");
   check(!!debug && debug.ballCount === ballCount, "3D 場景的球 mesh 數量 == 遊戲裡的球數", debug ? `${debug.ballCount} vs ${ballCount}` : "");
 
+  // 🔢 2026-09-27 使用者截圖:「2.5D 時許多數字 2 沒在立體的磚塊上,數字 2 還在 2D 上」——
+  //   磚塊字原本畫在 2D 疊層(平面座標),跟透視投影的 3D 磚對不上(危險線/道具同一顆坑第三次)。
+  //   第 1 關預設難度不一定有多血磚,先把前 5 顆存活磚的耐打度改成 2 讓它們一定有字,再驗三件:
+  //   ①3D 場景裡的字數 == 有字的存活磚數 ②字貼在自己那顆磚的頂面上 ③2D 疊層不再把那些「2」畫在平面位置。
+  //   ③用的是包住 fillText 數「畫了幾次 '2'」——舊版會畫出整排,新版 0 次;不看截圖也抓得到回歸。
+  const labelTest = await page.evaluate(async () => {
+    const alive = bricks.filter((b) => b.alive);
+    for (let i = 0; i < Math.min(5, alive.length); i += 1) {
+      alive[i].hp = 2;
+      alive[i].maxHp = Math.max(alive[i].maxHp || 0, 2);
+    }
+    const drawn = [];
+    const proto = CanvasRenderingContext2D.prototype;
+    const origFill = proto.fillText;
+    const overlay = document.getElementById("gameCanvas");
+    proto.fillText = function (text, ...rest) {
+      // 只數畫在 2D 疊層(#gameCanvas)上的字——render3d.js 烤貼圖也是用 canvas 2D 寫一次「2」,
+      // 那是離屏 canvas,不是疊層;第一版沒分就把烤貼圖那一次算成「疊層還在畫」而假紅。
+      if (this.canvas === overlay) drawn.push(String(text));
+      return origFill.call(this, text, ...rest);
+    };
+    await new Promise((resolve) => setTimeout(resolve, 400)); // 讓 render() 跑幾幀,syncBricks 才會把字建出來
+    proto.fillText = origFill;
+    const d = window.__render3dDebug ? window.__render3dDebug() : null;
+    const labeled = bricks.filter((b) => b.alive && getBrickLabel(b)).length;
+    return {
+      labeled,
+      labelCount: d && typeof d.brickLabelCount === "number" ? d.brickLabelCount : -1,
+      onBrick: d ? d.firstBrickLabelOnBrick : null,
+      overlayDrew2: drawn.filter((t) => t === "2").length,
+    };
+  });
+  check(labelTest.labeled >= 5, "前提:場上至少 5 顆有耐打度數字的磚(測試自己塞的)", String(labelTest.labeled));
+  check(labelTest.labelCount === labelTest.labeled, "3D 場景裡的磚塊字數量 == 有字的存活磚數(數字真的進了 3D)", `${labelTest.labelCount} vs ${labelTest.labeled}`);
+  check(labelTest.onBrick === true, "磚塊字貼在它那顆磚的頂面上(x/z 同心、高度剛好在磚厚之上)", String(labelTest.onBrick));
+  check(labelTest.overlayDrew2 === 0, "2D 疊層不再把耐打度數字畫在平面位置(0926 截圖那排飄空的 2)", `畫了 ${labelTest.overlayDrew2} 次`);
+
   // 🚨 2026-09-26 使用者實機回報:立體模式下危險線跑到板子下面去了。真因是危險線曾經
   // 只畫在 2D 疊層上(平面座標,固定螢幕百分比),板子是透視投影的 3D 物件——同一個
   // canvasY 在兩套投影下對不上,板子(近景)反而畫到「線」上面。改法是把危險線也做成
