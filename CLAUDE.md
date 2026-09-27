@@ -326,6 +326,12 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
   這幾樣沒有「要對準哪顆 3D 物件」的需求才留著；要再加任何跟磚塊或板子有空間關係的視覺，先問
   「它要對準誰」，答案不是「誰都不用」就進 3D。`verify-browser-3d.mjs` 用「包住 fillText 數疊層畫了
   幾次『2』」守著磚塊字不會被誰順手畫回疊層（只數 `#gameCanvas` 上的，烤貼圖的離屏 canvas 不算）。
+  **0927 續（使用者問「能做 skill 或 hook 避免再犯嗎」）**：全域 hook `overlay-3d-guard`（PostToolUse Write|Edit，
+  正本在 hfpc-claude-skills/plugins/hfpc-skills/hooks/）會在寫完 game.js 那一刻靜態抓「疊層函式呼叫到『用 ctx 畫 +
+  座標來自遊戲物件』的函式」；做法與驗法收進 skill `3d-overlay-parity`。⚠ 它目前對本檔吠**三樣還留在疊層的**：
+  `drawBullets()`（子彈從板子射向磚）／`drawBossRocks()`（落石從 Boss 落向板子）／`drawFloatingTexts()`（分數從被打掉
+  的磚冒出）——同一顆坑的第四、五、六次候選，**待使用者拍板要不要一起搬進 3D**；確認不搬的，在 `render3dFrame()`
+  呼叫那一行尾加 `// overlay-ok: <理由>` 才會靜音，不要用 `OVERLAY3D_GUARD_SKIP=1` 整支關掉。
 - 目前版本號由 `APP_VERSION` 控制，更新內容由 `CHANGELOG` 控制。
   `CHANGELOG` 是 `{ date, items }` 陣列，**最新一批放最前面**；發佈日期 `APP_DATE`
   由 `CHANGELOG[0].date` 推導，不要另外寫死一份日期（會忘了同步改）。
