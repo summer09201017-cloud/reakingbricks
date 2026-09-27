@@ -7,6 +7,37 @@
   roadmap.md             = 待做清單與「刻意不做」的理由
 
 
+★★★★★ 2026-09-27 第七輪（v2.6.6 → v2.6.7 / sw v32 → v33，CHANGELOG 每批加 v: + repo 內版本自我檢查）
+--------------------------------------------------------------------------------
+承第五輪「v2.6.5 漏寫版本資訊」:全域守門 #53 version-changelog-guard(hfpc-claude-skills)做完後,使用者拍板
+「要更嚴可以學 3d-chinese-chess 加 v: 欄位加 repo 內測試,開工」⇒ 本輪。
+
+■① 資料格式:CHANGELOG 每一批多一個 v: 欄位 = 那一批出貨時的 APP_VERSION
+  · 11 批的 v 用 git log -G'const APP_VERSION = ' 逐條回溯(不是估的):0927 2.6.7 / 0926 2.6.4 / 0925 2.6.0 /
+    0917 2.5.0 / 0916 2.4.0 / 0915 2.2.0 / 0914・0831・0815・0512 都是 1.5.0(那幾批出貨時沒 bump)/ 0511 1.2.0。
+  · 同一天第二輪的規矩不變:新條目加進今天那一批,**v 改成新版本號**(本輪就是:0927 那批 2.6.6 → 2.6.7 並加第三條)。
+  · renderVersionPanel() 每批日期旁印 <span class="version-tag">v2.6.7</span>(styles.css 加 .version-tag 藥丸);
+    設定頁按「版本資訊」仍只印一行提示(既有行為,沒動)。
+
+■② test/version.mjs(零相依,第六支)守五件事
+  ① 每批 v(x.y.z)/ date / items 形狀 ② ★ CHANGELOG[0].v === APP_VERSION ③ 由新到舊:date 不遞增、
+  v 不遞增,而且 2026-09-15 起的批次 v 嚴格遞減(之前的歷史批次允許同號)④ items 沒有 Markdown 星號
+  (丟 innerHTML 會原樣印出)⑤ APP_DATE 仍是 CHANGELOG[0].date 推的、畫面有印 release.v。
+  · 突變檢查:拿新測試打舊碼(沒有 v)14 項紅;把 APP_VERSION 改成 2.6.8 不動 CHANGELOG ⇒ 只有 ★ 那一條紅。
+  · 跟 hook #53 的分工:hook 在 commit/push 那一刻問(任何 repo、看 git diff);這支是 repo 自己的,
+    換一台沒裝 hook 的機器、或有人直接改檔也會紅。兩個都對本輪的工作區放行。
+
+■③ 驗收
+  · 本機:node --check ×2、六支零相依全綠;verify-browser 63/63、verify-browser-3d 30/30(本機 8931)。
+    ⚠ 本 clone(Downloads/hfpc-git/reakingbricks)底下 playwright-core 解析不到(ERR_MODULE_NOT_FOUND)——
+    把兩支 verify 複製到 Downloads/hfpc-git/_paul-wt/_tmp-bricks-verify/ 跑(那裡有 1.60),BASE 指本機或線上。
+  · 真瀏覽器截手機直向:進遊戲後 openVersionPanel() 開的面板每批日期旁有 v 標籤;設定頁提示印
+    「目前版本 2.6.7(2026-09-27 更新)」。
+  · 線上:pages.dev 用 wrangler 推(CLAUDE.md 部署段配方,dist 含 render3d.js/vendor)已驗 sw v33 / 2.6.7 / v: 欄位;
+    netlify 走 push 自動。驗:curl -s "https://bricksbreaking.pages.dev/sw.js?b=1" 與 netlify.app 同路徑都要是
+    breakout-pwa-v33,game.js 要有 v: "2.6.7"。
+
+
 ★★★★★ 2026-09-27 第六輪（v2.6.5 → v2.6.6 / sw v31 → v32，立體渲染的磚塊字貼到 3D 磚頂面上）
 --------------------------------------------------------------------------------
 使用者拿 0926 截圖問:「打磚塊 2.5D 時,許多的數字 2 都沒在立體的磚塊上,數字 2 還在 2D 上」。

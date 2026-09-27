@@ -77,6 +77,9 @@ v2.6.2 / sw v27 是寶物對齊 + 直向板子貼齊底邊，v2.6.1 / sw v26 是
 - `test/balance.mjs`：難度/生命平衡自我檢查（零相依，原地挖出 `DIFFICULTIES`/`POWERUP_*`/
   `pickPowerupType()` 跑統計）。改難度數字或寶物權重前後都要跑，這類純數字調整沒有畫面可以
   肉眼驗，最容易在下次調整時被誤改回去而沒人發現。
+- `test/version.mjs`：版本號 ↔ 版本資訊 自我檢查（零相依）。守 `CHANGELOG[0].v === APP_VERSION`、
+  批次由新到舊（0915 起 v 嚴格遞減、歷史批次允許同號）、items 沒有 Markdown 星號、`APP_DATE` 仍是推導的、
+  畫面有印每批的 v。0927 v2.6.5「只 bump 版本號沒寫版本資訊、線上印舊日期」那顆坑，這支和全域 hook #53 一起擋。
 - `test/verify-browser.mjs`：真瀏覽器驗收（`playwright-core` + 系統 Edge／Chrome，可打本機或線上）。
   含直向可玩性與「玩到一半轉手機」的迴歸（磚塊／球／板子有沒有跑到畫面外、下壓進度有沒有被偷走）。
 - `test/verify-browser-3d.mjs`：立體渲染模式的真瀏覽器驗收（另開一支，不跟上面那支混在一起）。
@@ -192,6 +195,7 @@ node test/patterns.mjs
 node test/sharecode.mjs
 node test/sharecard.mjs
 node test/balance.mjs
+node test/version.mjs
 ```
 
 改過 UI、按鈕或圖卡，再跑一次真瀏覽器驗收 —— 它會**實際點下去**，抓得到「按了沒反應」
@@ -333,10 +337,12 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
   的磚冒出）——同一顆坑的第四、五、六次候選，**待使用者拍板要不要一起搬進 3D**；確認不搬的，在 `render3dFrame()`
   呼叫那一行尾加 `// overlay-ok: <理由>` 才會靜音，不要用 `OVERLAY3D_GUARD_SKIP=1` 整支關掉。
 - 目前版本號由 `APP_VERSION` 控制，更新內容由 `CHANGELOG` 控制。
-  `CHANGELOG` 是 `{ date, items }` 陣列，**最新一批放最前面**；發佈日期 `APP_DATE`
+  `CHANGELOG` 是 `{ v, date, items }` 陣列，**最新一批放最前面**；`v` = 那一批出貨時的 `APP_VERSION`
+  （同一天第二輪：新條目加進今天那批、`v` 改成新版本號），畫面每批日期旁會印 `v`；發佈日期 `APP_DATE`
   由 `CHANGELOG[0].date` 推導，不要另外寫死一份日期（會忘了同步改）。
   全域守門 `version-changelog-guard`(#53)會盯:`APP_VERSION` 改了但 `CHANGELOG` 沒加、或最前面一批 date 不是今天
-  ⇒ 改檔時提醒、commit/push 時問(0927 v2.6.5 漏寫實錄)。
+  ⇒ 改檔時提醒、commit/push 時問(0927 v2.6.5 漏寫實錄)。repo 內另有 `test/version.mjs` 守 `CHANGELOG[0].v === APP_VERSION`，
+  改了版本號忘了寫版本資訊會當場紅（v2.6.7 起）。
   日期請填「改動真正進 git 的日期」，需要回溯可用 `git log -S "<某條更新文字>" -- game.js`。
 - 主題設定由 `THEMES` 控制，Canvas 內磚塊使用高光與陰影模擬 3D 厚度。
 - 關卡佈局由 `LEVEL_PATTERNS` 控制（ASCII 圖案，`#` 磚、`.` 空、`S/B/M` 指定特殊磚）。

@@ -756,6 +756,15 @@ body.mode-3d #gameCanvas {
   margin-top: 4px;
 }
 
+.version-panel .version-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .rotate-prompt {
   z-index: 5;
   background: #020b14f2;

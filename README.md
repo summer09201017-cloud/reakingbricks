@@ -87,6 +87,7 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 ├── test/sharecode.mjs      # 分享碼格式契約檢查(零相依)
 ├── test/sharecard.mjs      # 每日挑戰分享圖卡自我檢查(零相依,假 ctx)
 ├── test/balance.mjs        # 難度/生命平衡自我檢查(零相依)
+├── test/version.mjs        # 版本號 ↔ 版本資訊 自我檢查(零相依)
 ├── test/verify-browser.mjs # 真瀏覽器驗收(playwright-core + 系統 Edge/Chrome)
 ├── roadmap.md              # 待做清單與刻意不做的理由
 ├── 讀我-HANDOFF.txt        # 換機接手用的交接文件
@@ -121,6 +122,7 @@ node test/patterns.mjs
 node test/sharecode.mjs
 node test/sharecard.mjs
 node test/balance.mjs
+node test/version.mjs
 ```
 
 真瀏覽器驗收（改過 UI／圖卡之後跑，需要 `playwright-core` 與系統 Edge／Chrome）：
