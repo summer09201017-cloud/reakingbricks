@@ -7,6 +7,56 @@
   roadmap.md             = 待做清單與「刻意不做」的理由
 
 
+★★★★★ 2026-09-27 第五輪（v2.6.4 → v2.6.5 / sw v29 → v30，手機不再自動進全螢幕）
+--------------------------------------------------------------------------------
+使用者拿 0926 同一組截圖回來,明講:「一開始的下方會出現 2 行白色全螢幕提示的字,顯示時間太久,
+也不需要,請拿掉;所有手機版作品都會照樣;若要顯示,不要超過 1 秒」。
+
+■① 結論不變,但決策變了
+  那兩行字仍是 Android Chrome 呼叫 requestFullscreen() 時自己疊上去的系統提示(0926 ■② 查證過),
+  文字/時長/樣式網頁一個字都改不了,「不超過 1 秒」做不到。使用者既然明確拍板「拿掉」,網頁端
+  唯一的槓桿就是**不去叫它**:
+  · game.js:requestGameFullscreen({ auto }) 多了 auto 參數;startGameFromSetup / resumeSavedRun /
+    playCustomLevel 三條自動路帶 { auto: true };新函式 shouldAutoFullscreen() = !isTouchDevice(),
+    為假就跳過 requestFullscreen(方向鎖那段照舊:只有玩家選「固定橫向」才鎖,鎖不成靜默)。
+  · ⛶ toggleFullscreen() 不帶 auto ⇒ 玩家自己按仍進真全螢幕(那一次提示是玩家按出來的,只出現一次)。
+  · 桌機(hover:hover / pointer:fine)按「開始遊玩」仍自動全螢幕,桌機沒有那個提示,行為不變。
+  · 代價:手機瀏覽器裡玩會看得到網址列;裝成 App(主畫面)開啟本來就沒網址列,不受影響。
+  · 沒有做 CSS 假全螢幕(position:fixed 蓋版):版面本來就填滿視窗,不需要。
+
+■② 驗收
+  · 新增 test/fullscreen.mjs(零相依,node test/fullscreen.mjs,8 項):①三條自動路帶 auto:true、⛶ 不帶
+    ②原地挖出 shouldAutoFullscreen + requestGameFullscreen,用假 document 數 requestFullscreen 次數:
+    觸控+自動 0 次、觸控+手動 1 次、桌機+自動 1 次、桌機+手動 1 次。已用 git stash 對舊版證明會紅。
+    ⚠ 寫這支踩兩顆:heredoc 把正規式的反斜線吃掉(改 String.raw);抓函式本體時第一個 { 落在參數列
+    ({ auto = false } = {}) 裡,要先配對完 ( ) 再找 {。
+  · test/verify-browser.mjs 加 3 項:模擬手機被認成觸控裝置、按「開始遊玩」間諜數到 0 次
+    requestFullscreen、按 ⛶ 數到 1 次(無頭瀏覽器不會真的進全螢幕,所以用間諜數呼叫次數)。
+  · 既有 patterns/sharecode/sharecard/balance 全綠;verify-browser(2D)與 verify-browser-3d 本機全綠。
+  · playwright-core 在 agape250 機仍解析不到 ⇒ 照 0916 的招:%TEMP%\bricks-test 建 junction 借
+    Desktop\hfpc-sparks-hub\node_modules,把測試檔複製過去跑(python -m http.server 8931 供本機)。
+
+■③ 「所有手機版作品」—— 艦隊盤點做了,動手沒做,等使用者拍板
+  0926 寫的「不需要、也不能逐站修」只對了一半:提示改不了是真的,但「不自動呼叫」逐站是做得到的。
+  唯讀盤點本機 clone(不看統計、看源碼):
+  · 會自動呼叫 requestFullscreen 的 **76 站**——其中 **64 站**是同一支模板
+    (force-landscape-pwa/patches/add-landscape-fullscreen.mjs,標記 mfs-landscape-fullscreen v1:
+    第一次 pointerdown 就進全螢幕再 screen.orientation.lock('landscape'),另有 ⛶ #mfsFull 鈕),
+    其餘 12 站各自手寫(hfpc-paul-game / hfpc-ruth-game / billiards3d / hfpc-city3d / racing3d /
+    5chess / dianzhu-tai / sanguo-zhulu / hfpc-jonah-game / hfpc-samson-game / davidbeasts2d / 本站舊副本)。
+  · 只靠 ⛶ 鈕才進全螢幕的 **47 站**(棋類/tsum/match3/3D vite 水上系列…)本來就不會自己跳提示,不用動。
+  · ★ 真正的取捨:76 站裡 **74 站靠全螢幕來鎖橫向**(Android Chrome 的 orientation.lock 不在全螢幕裡
+    會被拒)。拿掉自動全螢幕 = 瀏覽器裡開的人要自己轉手機(手機有開自動旋轉才行;鎖了旋轉的人得按 ⛶,
+    那一次還是會看到提示)。裝成 App 的不受影響(manifest 已鎖 landscape)。
+  · 若拍板要做:改那支模板補丁(pointerdown 那條只鎖方向、不進全螢幕;或整條拿掉),64 站重打 + 重佈,
+    12 站手寫的逐站改;每站 SW bump。這不是小批次,先在打磚塊(本站)手機上試過感覺再決定。
+
+■④ 部署
+  · 兩份線上副本都要推:netlify.app 走 git push 自動;pages.dev 照 CLAUDE.md 部署段從 %TEMP% 純 ASCII
+    空目錄 wrangler pages deploy(目錄寫死絕對路徑,zero-pii-guard 不展開變數)。驗:兩邊 sw.js 都是
+    breakout-pwa-v30,再拿 verify-browser 打 pages.dev。
+
+
 ★★★★★ 2026-09-26 第四輪（v2.6.3 → v2.6.4 / sw v28 → v29，生命數調高 + 全螢幕提示查證）
 --------------------------------------------------------------------------------
 使用者這輪兩件事:①「能多幾條命嗎？或多掉增加生命的寶物,因我常死掉」②「所有的手機版

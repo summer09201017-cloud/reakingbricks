@@ -95,7 +95,7 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.6.4";
+const APP_VERSION = "2.6.5";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 const CHANGELOG = [
@@ -2190,11 +2190,26 @@ async function toggleFullscreen() {
   updateFullscreenButton();
 }
 
-async function requestGameFullscreen() {
+// ★ 手機／平板「不自動」進全螢幕(2026-09-27 使用者拍板)。
+//
+// Android Chrome 每次網頁呼叫 requestFullscreen() 都會在畫面底部疊上兩行系統提示
+// (「如要退出全螢幕模式,請從頂端向下拖曳,然後輕觸返回鍵」),那是瀏覽器畫的,
+// 顯示多久、寫什麼、長什麼樣網頁一個字都改不了(0926 查證,見 CLAUDE.md)。
+// 使用者 0927 明講「拿掉」——網頁端唯一的槓桿就是不去呼叫它:觸控裝置上
+// 「開始遊玩 / 接續 / 自訂關卡」三條自動路一律跳過 requestFullscreen,
+// 想要真全螢幕的玩家按 ⛶ 自己進(那次提示是玩家自己按出來的,而且只出現這一次)。
+// 桌機瀏覽器沒有這個提示,維持原本開始就全螢幕。
+// 代價寫清楚:手機瀏覽器裡玩會看得到網址列;裝成 App(主畫面)開啟本來就沒有網址列,不受影響。
+function shouldAutoFullscreen() {
+  return !isTouchDevice();
+}
+
+async function requestGameFullscreen({ auto = false } = {}) {
   const root = document.documentElement;
+  const skipFullscreen = auto && !shouldAutoFullscreen();
 
   try {
-    if (!document.fullscreenElement && root.requestFullscreen) {
+    if (!skipFullscreen && !document.fullscreenElement && root.requestFullscreen) {
       await root.requestFullscreen({ navigationUI: "hide" });
     }
   } catch {
@@ -2277,7 +2292,7 @@ async function startGameFromSetup() {
   setInstallHint("");
   clearSavedRun();   // 按「開始遊玩」就是要開新局,舊存檔當場作廢免得之後誤接
   showGameScreen();
-  await requestGameFullscreen();
+  await requestGameFullscreen({ auto: true });
   pendingNewGameAfterLandscape = true;
   updateOrientationPrompt();
 }
@@ -2294,7 +2309,7 @@ async function resumeSavedRun() {
   setInstallHint("");
   restoreRun(saved);
   showGameScreen();
-  await requestGameFullscreen();
+  await requestGameFullscreen({ auto: true });
   pendingResumeAfterLandscape = true;
   updateOrientationPrompt();
 }
@@ -2417,7 +2432,7 @@ async function playCustomLevel() {
   unlockAudioFromGesture();
   setInstallHint("");
   showGameScreen();
-  await requestGameFullscreen();
+  await requestGameFullscreen({ auto: true });
   pendingNewGameAfterLandscape = true;
   updateOrientationPrompt();
 }

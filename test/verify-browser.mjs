@@ -173,9 +173,26 @@ const manifest = await page.evaluate(async () => {
 // 0916:直向也能玩之後就不可以再鎖 landscape —— 鎖了,裝成 App 的人連轉都轉不了。
 check(manifest?.orientation === 'any', 'manifest 不鎖方向(直向橫向都能玩)', String(manifest?.orientation));
 
+// 0927:手機／平板按「開始遊玩」不再自動 requestFullscreen —— Android Chrome 底部那兩行
+// 「如要退出全螢幕模式…」系統提示就是它引出來的,網頁改不了提示本身,只能不去叫它。
+// 無頭瀏覽器不會真的進全螢幕,所以用間諜數「呼叫了幾次」:自動路 0 次、⛶ 手動 1 次。
+await page.evaluate(() => {
+  window.__fsCalls = 0;
+  document.documentElement.requestFullscreen = () => { window.__fsCalls += 1; return Promise.resolve(); };
+});
+const touchMedia = await page.evaluate(() => window.matchMedia('(hover: none), (pointer: coarse)').matches);
+check(touchMedia === true, '模擬手機被網站認成觸控裝置(isTouchDevice 的判準)', String(touchMedia));
+
 // 進遊戲畫面（0916 起直向是可以玩的版面，不再跳「請轉為橫向」）
 await page.locator('#startBtn').click();
 await page.waitForTimeout(700);
+
+const fsAuto = await page.evaluate(() => window.__fsCalls);
+check(fsAuto === 0, '手機按「開始遊玩」不自動 requestFullscreen(0927 拍板:Android Chrome 的兩行提示不再出現)', `呼叫 ${fsAuto} 次`);
+await page.locator('#fullscreenBtn').click();
+await page.waitForTimeout(200);
+const fsManual = await page.evaluate(() => window.__fsCalls);
+check(fsManual === 1, '⛶ 手動鈕仍會 requestFullscreen(玩家自己要的那一次)', `呼叫 ${fsManual} 次`);
 
 const fsBtn = await page.evaluate(() => {
   const el = document.getElementById('fullscreenBtn');
