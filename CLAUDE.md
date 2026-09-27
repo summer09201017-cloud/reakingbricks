@@ -335,6 +335,8 @@ curl.exe -s "https://bricksbreaking.netlify.app/sw.js?b=1"   | Select-String CAC
 - 目前版本號由 `APP_VERSION` 控制，更新內容由 `CHANGELOG` 控制。
   `CHANGELOG` 是 `{ date, items }` 陣列，**最新一批放最前面**；發佈日期 `APP_DATE`
   由 `CHANGELOG[0].date` 推導，不要另外寫死一份日期（會忘了同步改）。
+  全域守門 `version-changelog-guard`(#53)會盯:`APP_VERSION` 改了但 `CHANGELOG` 沒加、或最前面一批 date 不是今天
+  ⇒ 改檔時提醒、commit/push 時問(0927 v2.6.5 漏寫實錄)。
   日期請填「改動真正進 git 的日期」，需要回溯可用 `git log -S "<某條更新文字>" -- game.js`。
 - 主題設定由 `THEMES` 控制，Canvas 內磚塊使用高光與陰影模擬 3D 厚度。
 - 關卡佈局由 `LEVEL_PATTERNS` 控制（ASCII 圖案，`#` 磚、`.` 空、`S/B/M` 指定特殊磚）。
