@@ -1,4 +1,4 @@
-const CACHE_NAME = "breakout-pwa-v33";
+const CACHE_NAME = "breakout-pwa-v34";
 const ASSETS = [
   "./",
   "./styles.css",
@@ -35,6 +35,15 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
+    return;
+  }
+
+  // 跨站請求(例如 hfpc-feedback 的 widget.js／/api/feedback)一律直接走網路、不進快取：
+  // 這支 SW 原本對所有 GET 都 cache-first，第一次抓到的「讚數 0」會被永久存起來，
+  // 之後重整永遠顯示 0（Worker 的 Cache-Control: no-store 對 SW 的 cache.put 無效）。
+  // 同源的本站資產（index.html／game.js／render3d.js…）不受影響，仍走下面的 cache-first。
+  if (new URL(event.request.url).origin !== self.location.origin) {
+    event.respondWith(fetch(event.request));
     return;
   }
 

@@ -95,12 +95,17 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.6.7";
+const APP_VERSION = "2.6.8";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { v, date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 // ★ v = 這一批出貨時的 APP_VERSION（同一天第二輪：把新條目加進今天那一批、v 改成新版本號）。
 //   test/version.mjs 守 CHANGELOG[0].v === APP_VERSION，改了版本號忘了寫這裡會當場紅；hook #53 在 commit/push 時也會問。
 const CHANGELOG = [
+  { v: "2.6.8", date: "2026-10-13", items: [
+    "開始畫面多一顆「💬 按讚・留言」(平常收起來,點開才展開),一局結束的畫面也有一份,兩邊按一次就算數",
+    "按讚每台裝置一次;留言有兩種:點短語(👍 好聽、🙏 感動、🕊️ 平安、😊 太好玩了、💪 想再玩一次、❤️ 我喜歡,可以一次點好幾句)送出,馬上就會出現,畫面上會顯示每一句被選了幾次",
+    "也可以自己打字(暱稱可不填),審核通過後才會出現(電話、Email 這類個人資料會被擋下來)",
+  ] },
   { v: "2.6.7", date: "2026-09-27", items: [
     "手機／平板按「開始遊玩」「繼續上一局」「玩自訂關卡」時不再自動進全螢幕，畫面底下那兩行「如要退出全螢幕模式…」的瀏覽器提示就不會再自己跳出來；想全螢幕的話按遊戲畫面上的 ⛶ 鈕（電腦版不受影響）",
     "修正立體渲染（3D）模式下磚塊上的數字／字母沒有貼在立體磚塊上、整排飄在磚牆上方平面位置的問題：字改成貼在每顆磚的頂面上，移動磚在動、磚被打掉，字都跟著走",
@@ -4524,10 +4529,10 @@ function render3dFrame(shaking, amp) {
   // 也在這層平面疊層上,跟透視投影的板子對不齊——碰撞判定本身沒壞,是畫面上對不準。
   // 道具改成 3D 場景自己的 Sprite(見下面 payload 的 powerups 與 render3d.js)。
   // ⚠ 磚塊字也不在這裡畫(0927,同一顆坑第三次):見 render3d.js syncBrickLabel() 與下面 brickSnapshots 的 label。
-  drawBullets();
+  drawBullets(); // overlay-ok: 子彈由自動雷射判定(命中靠座標比對,不是玩家手動瞄準接住),CLAUDE.md 已載明刻意留在 2D 疊層
   drawShieldWall();
-  drawBossRocks();
-  drawFloatingTexts();
+  drawBossRocks(); // overlay-ok: 落石(含預告線)玩家是靠「躲開危險線那一直欄」反應,不是像球/板子那樣要精準貼齊 3D 透視位置,CLAUDE.md 已載明刻意留在 2D 疊層
+  drawFloatingTexts(); // overlay-ok: 純文字特效,不需要玩家瞄準或跟任何 3D 物件對齊,CLAUDE.md 已載明刻意留在 2D 疊層
   if (shaking) {
     ctx.restore();
   }

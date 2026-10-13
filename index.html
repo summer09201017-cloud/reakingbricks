@@ -117,6 +117,9 @@
           <button id="updateBtn" type="button" class="secondary-btn" hidden>更新遊戲</button>
           <button id="installBtn" type="button" class="secondary-btn" hidden>安裝 APP</button>
         </div>
+        <!-- 👍 首頁收合版(like-comment-kit 1013 批次 2):跟結算畫面那份同一個 g,按讚會互相同步 -->
+        <div id="hfpc-feedback-home"></div>
+        <script src="https://hfpc-feedback.summer09201017.workers.dev/widget.js" data-g="bricksbreaking" data-mode="free" data-like="👍 好玩就按個讚" data-title="打磚塊" data-root="#hfpc-feedback-home" data-collapsed defer></script>
         <p id="installHint" class="install-hint" hidden></p>
       </section>
 
@@ -255,6 +258,8 @@
             <button id="shareRunBtn" type="button" class="secondary-btn" hidden>🖼 成績圖卡</button>
             <button id="backToSetupOverlayBtn" type="button" class="secondary-btn">回設定</button>
           </div>
+          <div id="hfpc-feedback"></div>
+          <script src="https://hfpc-feedback.summer09201017.workers.dev/widget.js" data-g="bricksbreaking" data-mode="free" data-like="👍 好玩就按個讚" data-title="打磚塊" defer></script>
           <div class="settings-menu" id="settingsMenu" hidden>
             <label><input id="musicToggle" type="checkbox"> 音樂</label>
             <label><input id="sfxToggle" type="checkbox"> 音效</label>
