@@ -89,18 +89,32 @@ const overlayStats = document.getElementById("overlayStats");
 const overlayActions = document.getElementById("overlayActions");
 const settingsMenu = document.getElementById("settingsMenu");
 const versionPanel = document.getElementById("versionPanel");
+const changelogDialog = document.getElementById("changelogDialog");
+const changelogCloseBtn = document.getElementById("changelogCloseBtn");
+const appVerBadge = document.getElementById("appVerBadge");
+const confirmDialog = document.getElementById("confirmDialog");
+const confirmTitle = document.getElementById("confirmTitle");
+const confirmText = document.getElementById("confirmText");
+const confirmOkBtn = document.getElementById("confirmOkBtn");
+const confirmCancelBtn = document.getElementById("confirmCancelBtn");
 const resumeBtn = document.getElementById("resumeBtn");
 const restartBtn = document.getElementById("restartBtn");
 const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.6.8";
+const APP_VERSION = "2.6.9";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { v, date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 // ★ v = 這一批出貨時的 APP_VERSION（同一天第二輪：把新條目加進今天那一批、v 改成新版本號）。
 //   test/version.mjs 守 CHANGELOG[0].v === APP_VERSION，改了版本號忘了寫這裡會當場紅；hook #53 在 commit/push 時也會問。
 const CHANGELOG = [
+  { v: "2.6.9", date: "2026-11-13", items: [
+    "首頁最下面多一列「版本與更新紀錄」，一直都在、點一下就能看到每一次改了什麼；設定頁那顆按鈕也改名叫「更新紀錄」，畫面上的版本號統一成一種寫法",
+    "說明文字、遊戲中上方的分數與按鈕都放大了，開關、按鈕也加大，眼睛不好或手指比較粗也比較好看、好按",
+    "遊戲中按「重新開始」、關卡編輯器按「清空」之前會先問一次，並寫清楚會失去什麼，不會一按就把這一局或畫好的關卡弄丟",
+    "首頁改寫玩法說明：直向橫向都能玩、想全螢幕按 ⛶；發球的說明改成按「繼續」或空白鍵，設定頁也補上鍵盤操作說明",
+  ] },
   { v: "2.6.8", date: "2026-10-13", items: [
     "開始畫面多一顆「💬 按讚・留言」(平常收起來,點開才展開),一局結束的畫面也有一份,兩邊按一次就算數",
     "按讚每台裝置一次;留言有兩種:點短語(👍 好聽、🙏 感動、🕊️ 平安、😊 太好玩了、💪 想再玩一次、❤️ 我喜歡,可以一次點好幾句)送出,馬上就會出現,畫面上會顯示每一句被選了幾次",
@@ -109,18 +123,18 @@ const CHANGELOG = [
   { v: "2.6.7", date: "2026-09-27", items: [
     "手機／平板按「開始遊玩」「繼續上一局」「玩自訂關卡」時不再自動進全螢幕，畫面底下那兩行「如要退出全螢幕模式…」的瀏覽器提示就不會再自己跳出來；想全螢幕的話按遊戲畫面上的 ⛶ 鈕（電腦版不受影響）",
     "修正立體渲染（3D）模式下磚塊上的數字／字母沒有貼在立體磚塊上、整排飄在磚牆上方平面位置的問題：字改成貼在每顆磚的頂面上，移動磚在動、磚被打掉，字都跟著走",
-    "「版本資訊」每一批更新旁邊現在會標出當時的版本號（例如 v2.6.7），要對照手機上開到的是哪一版更方便；另外加了一道自我檢查，改版時忘了把更新內容寫進來會直接被擋下",
+    "「更新紀錄」每一批更新旁邊現在會標出當時的版本號（例如 v2.6.7），要對照手機上開到的是哪一版更方便；改版時忘了把更新內容寫進來，也會在出版前被擋下",
   ] },
   { v: "2.6.4", date: "2026-09-26", items: [
     "生命數調高（休閒4→5／標準3→4／挑戰2→3），並讓「補命」寶物更容易掉到、單場上限也拉寬，常死掉的話應該會輕鬆一些",
-    "修正立體渲染（3D）模式下板子明明貼齊底邊、畫面上卻還有一大截空白的問題：鏡頭取景改成不對稱視角，板子與危險線那一端不再浪費視角配額",
+    "修正立體渲染（3D）模式下板子明明貼齊底邊、畫面上卻還有一大截空白的問題：鏡頭重新取景，板子與危險線那一端不再留一大片空白",
     "修正立體渲染（3D）模式下吃不到寶物的問題：寶物道具改成跟板子一樣的立體物件，不管鏡頭怎麼擺都會對準板子",
     "修正立體渲染（3D）模式下危險線跑到板子下面的問題：危險線改成跟板子一樣的立體物件，不管鏡頭怎麼擺都不會再跑位",
     "手機直向時板子與危險線改貼齊螢幕底邊（跟橫向一樣，不再另外留拇指區）",
   ] },
   { v: "2.6.0", date: "2026-09-25", items: [
     "新增「立體渲染（3D）」設定：把磚牆、板子、球換成立體方塊來畫，玩法、紀錄、分享碼完全不變，隨時可以切回原本畫面",
-    "立體渲染需要透過網路伺服器開啟（不能直接雙擊 index.html），舊裝置若不支援會自動退回 2D",
+    "立體渲染要從網站打開才能用（直接開下載到電腦裡的檔案不行），舊裝置若不支援會自動退回原本的平面畫面",
   ] },
   { v: "2.5.0", date: "2026-09-17", items: [
     "設定新增「板子長度」:極短／短／標準／長／超長五段。覺得手機直向的板子太短就調長一點(越長越好接),想要更難就調短",
@@ -132,27 +146,27 @@ const CHANGELOG = [
     "設定新增「畫面方向」：自動（直向橫向都能玩）或固定橫向，想維持原本的橫向玩法可以選後者",
     "玩到一半轉手機不會壞：磚塊、球、寶物與下壓進度會整場搬到新版面，續玩存檔跨方向也接得回來",
     "首頁在橫向手機上把「開始遊玩」固定在畫面底部，不必盲捲兩個畫面才找得到",
-    "音量拉桿、核取方塊與下拉選單的可按範圍補到 44px",
+    "音量拉桿、勾選框與下拉選單加大，手指比較好按",
     "每日挑戰可以做成分享圖卡：把日期、題號、分數、走到第幾關與那一關的磚塊圖案畫成一張 PNG，存檔或直接分享",
     "圖卡與分享文字改印「今天」的成績，不再拿歷來每日最高分去配今天的日期",
     "每日挑戰結算多一顆「成績圖卡」按鈕，打完就能直接做卡",
     "遊戲畫面多一顆 ⛶ 手動全螢幕鈕：自動轉橫向被瀏覽器擋掉時，還有第二次機會",
-    "安裝成 APP 時鎖定橫向；遊戲中的按鈕加大到 44px，手機上比較不會點錯",
+    "安裝成 APP 時鎖定橫向；遊戲中的按鈕加大，手機上比較不會點錯",
   ] },
   { v: "2.2.0", date: "2026-09-15", items: [
     "新增關卡編輯器：自己畫一張關卡，產生分享碼傳給別人，對方貼上就能玩",
     "新增續玩存檔：離開時自動保存整個場面，回來可按「繼續上一局」接著玩",
     "標準與挑戰難度的磚塊會定時下移，碰到紅色危險線會扣一命；休閒難度不下移",
     "Boss 會反擊：往下砸落石，落下前會有紅色預告線，護盾可以擋一次",
-    "新增本機排行榜 Top 10，結算會顯示名次或「再多幾分能進榜」",
+    "新增這台裝置上的排行榜（前 10 名），結算會顯示名次或「再多幾分能進榜」",
     "新增卡關輔助：同一關失誤兩次後自動加寬板子，過關後收回，可在設定關閉",
     "強化打擊感：擊碎磚塊、連擊、爆破與失誤會震動畫面並短暫頓格",
     "尊重系統的「減少動態」設定，開啟時完全不震動畫面",
     "每一關改成手繪圖案佈局：城牆、金字塔、拱門、十字、沙漏、棋盤、堡壘、愛心、雙塔、箭頭",
     "關卡倒數會顯示本關圖案名稱",
     "磚塊耐打度改用主題色深淺表示，高關卡不再整片同色",
-    "補上完賽匿名計數，讓遊玩統計不再只有開啟次數",
-    "版本資訊補上更新日期，更新內容改為依日期分批顯示",
+    "遊玩統計多記「玩完一局」的次數（不記任何個人資料），不再只知道有幾次打開",
+    "更新紀錄補上更新日期，改為依日期分批顯示",
   ] },
   { v: "1.5.0", date: "2026-09-14", items: [
     "修正安裝成主畫面 App 後開啟失敗的問題",
@@ -161,7 +175,7 @@ const CHANGELOG = [
     "畫面右下角會顯示目前實際執行中的版本號",
   ] },
   { v: "1.5.0", date: "2026-08-15", items: [
-    "加入零個資的匿名遊玩計數，離線時自動略過，不影響遊戲",
+    "加入遊玩次數統計（不記任何個人資料），沒有網路時自動略過，不影響遊戲",
   ] },
   { v: "1.5.0", date: "2026-05-12", items: [
     "新增護盾、磁鐵板、穿透球、分數加倍、吸寶物、炸彈球、慢動作與雙板寶物",
@@ -171,9 +185,9 @@ const CHANGELOG = [
     "新增分裂磚、加速磚、反彈磚與 Boss 大型磚",
     "新增音樂與音效音量滑桿，並讓聲音預設再放大 50%",
     "修正遊戲頁音效按鈕，現在會直接打開聲音設定面板",
-    "修正 PC 遊戲畫面置中與寬螢幕裁切問題",
+    "修正電腦版遊戲畫面置中與寬螢幕被切掉的問題",
     "提升音樂與碰撞音效音量，並改善音訊解鎖流程",
-    "加厚底板並加入手機相對拖曳、PC 點畫布與 Enter 開始",
+    "加厚底板；手機可以用手指拖曳移動板子，電腦可以點畫面或按 Enter 開始",
     "新增設定頁、橫向全螢幕遊戲頁與手機旋轉提示",
     "新增關卡開始倒數與精簡遊戲 HUD",
   ] },
@@ -1359,12 +1373,29 @@ function getGradeFor(score, level, combo) {
 
 function renderVersionPanel() {
   versionPanel.innerHTML = `
-    <h3>版本 ${APP_VERSION}<span class="version-date">${APP_DATE} 更新</span></h3>
+    <h3>目前版本 v${APP_VERSION}<span class="version-date">${APP_DATE} 更新</span></h3>
     ${CHANGELOG.map((release) => `
       <p class="version-release">${release.date}<span class="version-tag">v${release.v}</span></p>
       <ul>${release.items.map((item) => `<li>${item}</li>`).join("")}</ul>
     `).join("")}
   `;
+}
+
+// 🏷️ 首頁頁尾那一列(1113)。字只從這裡寫:版號 = APP_VERSION(= CHANGELOG[0].v,test/version.mjs 守),
+// 日期 = APP_DATE(= CHANGELOG[0].date)。index.html 不寫死版號,免得兩份對不上。
+function renderVersionFooter() {
+  if (!appVerBadge) {
+    return;
+  }
+  const note = appVerBadge.querySelector(".version-footer-note");
+  appVerBadge.textContent = `版本 v${APP_VERSION}（${APP_DATE}）· `;
+  const link = document.createElement("span");
+  link.className = "version-footer-link";
+  link.textContent = "更新紀錄";
+  appVerBadge.appendChild(link);
+  if (note) {
+    appVerBadge.appendChild(note);
+  }
 }
 
 function getBallRadius() {
@@ -1836,7 +1867,6 @@ function setOverlay(title, text, options = {}) {
     visible = true,
     showActions = false,
     showSettings = false,
-    showVersion = false,
     showShare = false,
     stats = null,
   } = options;
@@ -1845,14 +1875,12 @@ function setOverlay(title, text, options = {}) {
   overlayText.textContent = text;
   overlay.classList.remove("countdown");
   overlay.classList.toggle("hidden", !visible);
+  // 1113:蓋版內容比畫布高時可以往下捲;每次換內容都回到最上面,標題與「繼續」才會先被看到。
+  overlay.scrollTop = 0;
   overlayActions.hidden = !showActions;
   // 🖼 成績圖卡只在「每日挑戰結算」出現：一般關卡沒有日期與題號，給了也沒有分享價值。
   shareRunBtn.hidden = !(showActions && showShare);
   settingsMenu.hidden = !showSettings;
-  versionPanel.hidden = !showVersion;
-  if (showVersion) {
-    renderVersionPanel();
-  }
 
   if (stats) {
     overlayStats.innerHTML = stats.map(([label, value]) => `<p>${label}<br><strong>${value}</strong></p>`).join("");
@@ -3015,7 +3043,7 @@ function restartGame(options = {}) {
   syncSettingsControls();
   evaluateAchievements();
   if (showStartOverlay) {
-    setOverlay("打磚塊", "按空白鍵、開始遊戲或手機按鈕發射球。", {
+    setOverlay("打磚塊", "按「繼續」或空白鍵發球；用手指拖曳或移動滑鼠來移動板子。", {
       showActions: true,
       showSettings: true,
       stats: getOverlayStatItems(),
@@ -3128,7 +3156,7 @@ function loseLife() {
       : rank > 0
         ? `進榜了！這局排第 ${rank} 名。`
         : gapToTop > 0
-          ? `再多 ${gapToTop} 分就能擠進 Top 10。`
+          ? `再多 ${gapToTop} 分就能擠進前 10 名。`
           : "";
     recordDailyToday();   // 存「今天」這一筆，分享圖卡才印得出誠實的日期＋成績
     setOverlay("遊戲結束", `最終分數：${state.score}。最高分：${records.bestScore}。${rankText}`, {
@@ -3155,7 +3183,7 @@ function loseLife() {
   saveRun();
   setOverlay("失去一命", assisted
     ? `這關卡關了，已自動把板子加寬幫你一把。剩餘生命：${state.lives}。`
-    : `剩餘生命：${state.lives}。按空白鍵或開始遊戲繼續。`, {
+    : `剩餘生命：${state.lives}。按「繼續」或空白鍵發球。`, {
     showActions: true,
     showSettings: false,
     stats: getOverlayStatItems(),
@@ -4723,21 +4751,75 @@ function openSettingsMenu() {
   syncButton();
 }
 
-function openVersionPanel() {
-  if (!isGameScreenActive) {
-    setInstallHint(`目前版本 ${APP_VERSION}（${APP_DATE} 更新）：${CHANGELOG[0].items.join("、")}`);
-    return;
-  }
+// 📜 更新紀錄(1113 改):以前設定頁按「版本資訊」只把最新一批串成一行塞進 installHint,
+// 能顯示完整面板的那條路要在遊戲畫面才跑,而遊戲畫面又沒有鈕叫它 ⇒ 完整紀錄實際上點不到。
+// 現在面板搬到 body 層的彈出視窗,首頁頁尾那一列與「更新紀錄」鈕都打開同一份完整列表。
+let modalReturnFocus = null;
 
-  if (state.running) {
+function isModalOpen() {
+  return !changelogDialog.hidden || !confirmDialog.hidden;
+}
+
+function openVersionPanel(event) {
+  if (isGameScreenActive && state.running) {
     pauseGame(false);
   }
+  renderVersionPanel();
+  modalReturnFocus = (event && event.currentTarget) || document.activeElement;
+  changelogDialog.hidden = false;
+  versionPanel.scrollTop = 0;
+  changelogCloseBtn.focus();
+}
 
-  setOverlay("更新內容", `目前版本 ${APP_VERSION}，${APP_DATE} 更新`, {
-    showActions: true,
-    showSettings: false,
-    showVersion: true,
-    stats: getOverlayStatItems(),
+function closeVersionPanel() {
+  changelogDialog.hidden = true;
+  if (modalReturnFocus && typeof modalReturnFocus.focus === "function") {
+    modalReturnFocus.focus();
+  }
+  modalReturnFocus = null;
+}
+
+// ⚠ 危險操作確認(1113)。一律寫清楚「會失去什麼」,預設焦點放在「取消」(按 Enter 不會誤刪)。
+let pendingConfirmAction = null;
+
+function askConfirm({ title, text, okLabel, onOk }) {
+  pendingConfirmAction = onOk;
+  confirmTitle.textContent = title;
+  confirmText.textContent = text;
+  confirmOkBtn.textContent = okLabel;
+  modalReturnFocus = document.activeElement;
+  confirmDialog.hidden = false;
+  confirmCancelBtn.focus();
+}
+
+function closeConfirm(runAction) {
+  const action = pendingConfirmAction;
+  pendingConfirmAction = null;
+  confirmDialog.hidden = true;
+  const returnTo = modalReturnFocus;
+  modalReturnFocus = null;
+  if (runAction && action) {
+    action();
+    return;
+  }
+  if (returnTo && typeof returnTo.focus === "function") {
+    returnTo.focus();
+  }
+}
+
+// 遊戲中的「重新開始」:這一局還有東西可失去(有分數或已過關)才問;
+// 遊戲已結束或剛開局 0 分第 1 關,直接重開不囉嗦。
+function requestRestartFromOverlay() {
+  const hasProgress = !state.gameOver && (state.score > 0 || state.level > 1);
+  if (!hasProgress) {
+    restartGameAndCountdown("重新開始");
+    return;
+  }
+  askConfirm({
+    title: "確定要重新開始嗎？",
+    text: `這一局目前 ${state.score} 分、打到第 ${state.level} 關。重新開始會從第 1 關、0 分重來，這一局的分數不會進排行榜，進度也不會保留。`,
+    okLabel: "確定重新開始",
+    onOk: () => restartGameAndCountdown("重新開始"),
   });
 }
 
@@ -5167,6 +5249,20 @@ function restartForModeChange() {
 }
 
 window.addEventListener("keydown", (event) => {
+  // 彈出視窗(更新紀錄／確認)開著時:Esc 關掉它,其餘按鍵交給視窗裡的按鈕自己處理,
+  // 不可以穿透下去(否則在確認框按 Enter 會同時觸發「開始遊玩」)。
+  if (isModalOpen()) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (!confirmDialog.hidden) {
+        closeConfirm(false);
+      } else {
+        closeVersionPanel();
+      }
+    }
+    return;
+  }
+
   unlockAudioFromGesture();
   const key = event.key.toLowerCase();
 
@@ -5292,7 +5388,7 @@ canvas.addEventListener("touchcancel", () => {
 startBtn.addEventListener("click", togglePlayState);
 toggleBtn.addEventListener("click", togglePlayState);
 resumeBtn.addEventListener("click", () => beginLevelCountdown("準備繼續"));
-restartBtn.addEventListener("click", () => restartGameAndCountdown("重新開始"));
+restartBtn.addEventListener("click", requestRestartFromOverlay);
 quickRestartBtn.addEventListener("click", () => {
   if (state.restartCountdown > 0) {
     cancelRestartCountdown();
@@ -5303,6 +5399,23 @@ quickRestartBtn.addEventListener("click", () => {
 });
 settingsBtn.addEventListener("click", openSettingsMenu);
 versionBtn.addEventListener("click", openVersionPanel);
+if (appVerBadge) {
+  appVerBadge.addEventListener("click", openVersionPanel);
+}
+changelogCloseBtn.addEventListener("click", closeVersionPanel);
+// 點視窗外面的暗色背景也能關(長輩常這樣點);點視窗本身不算。
+changelogDialog.addEventListener("click", (event) => {
+  if (event.target === changelogDialog) {
+    closeVersionPanel();
+  }
+});
+confirmOkBtn.addEventListener("click", () => closeConfirm(true));
+confirmCancelBtn.addEventListener("click", () => closeConfirm(false));
+confirmDialog.addEventListener("click", (event) => {
+  if (event.target === confirmDialog) {
+    closeConfirm(false);
+  }
+});
 shareDailyBtn.addEventListener("click", shareDailyChallenge);
 // ── 🧩 關卡編輯器事件 ──────────────────────────────────────────────────────
 editorBtn.addEventListener("click", () => {
@@ -5342,8 +5455,22 @@ editorGrid.addEventListener("click", (event) => {
 editorRowMinus.addEventListener("click", () => setEditorRowCount(editorRows.length - 1));
 editorRowPlus.addEventListener("click", () => setEditorRowCount(editorRows.length + 1));
 editorClear.addEventListener("click", () => {
-  editorRows = createBlankEditorRows(editorRows.length);
-  renderEditor();
+  const clear = () => {
+    editorRows = createBlankEditorRows(editorRows.length);
+    renderEditor();
+  };
+  // 本來就是空的就不必問;有畫東西才確認(1113:原本一按就全清、沒有復原)。
+  const painted = editorRows.reduce((sum, row) => sum + row.split("").filter((c) => c !== ".").length, 0);
+  if (painted === 0) {
+    clear();
+    return;
+  }
+  askConfirm({
+    title: "要清空整張關卡嗎？",
+    text: `畫好的 ${painted} 塊磚會全部擦掉，清空後沒辦法復原。想留著的話，先按「複製分享碼」存起來。`,
+    okLabel: "確定清空",
+    onOk: clear,
+  });
 });
 editorFill.addEventListener("click", () => {
   editorRows = editorRows.map(() => editorBrush === "." ? ".".repeat(EDITOR_COLS) : editorBrush.repeat(EDITOR_COLS));
@@ -5579,6 +5706,7 @@ restartGame({ countGame: false, showStartOverlay: false });
 renderAchievements();
 renderTopScores();
 renderEditor();
+renderVersionFooter();
 updateResumeButton();
 updateInstallButton();
 requestAnimationFrame(gameLoop);

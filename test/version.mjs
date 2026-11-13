@@ -14,6 +14,7 @@
 //       那是歷史,允許相同,但**新加的批次**不可以再跟上一批同號)
 //   ④ items 裡沒有 Markdown 星號(它們是丟進 innerHTML 的,星號會原樣印在畫面上)
 //   ⑤ APP_DATE 仍是從 CHANGELOG[0].date 推的、renderVersionPanel 有把 v 印出來(防有人改回寫死/拿掉)
+//   ⑥ sw.js 的 APP_VERSION === game.js 的 APP_VERSION、CACHE_NAME 是 breakout-pwa-v<數字>(1113 加)
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -115,6 +116,23 @@ for (let i = 1; i < CHANGELOG.length; i += 1) {
 // ⑤ 推導與畫面沒被改回去
 check(/^const APP_DATE = CHANGELOG\[0\]\.date;/m.test(src), "APP_DATE 仍是從 CHANGELOG[0].date 推的(不要寫死一份日期)");
 check(/release\.v\b/.test(src), "renderVersionPanel 有把每一批的 v 印在畫面上");
+
+// ⑥ 畫面版號 ↔ SW(2026-11-13 加)。
+//    那天之前:首頁右下角徽章印的是 SW 快取名的「v34」,「版本資訊」印的是 game.js 的「2.6.8」——
+//    同一個畫面兩套號碼。現在 sw.js 另帶一份 APP_VERSION(SW 讀不到 game.js),徽章問 SW 拿的就是它。
+//    ★ 兩份一定要相等,否則頁尾會一直跳「重新整理一次就會換成最新版」。
+//    ★ CACHE_NAME 的格式維持 breakout-pwa-v<數字>:艦隊巡檢工具讀的是它,不可以改成帶小數點的格式。
+const sw = readFileSync(join(root, "sw.js"), "utf8");
+const swVerMatch = /^const APP_VERSION = "([^"]+)";/m.exec(sw);
+const SW_APP_VERSION = swVerMatch ? swVerMatch[1] : null;
+check(SW_APP_VERSION === APP_VERSION,
+  "★ sw.js 的 APP_VERSION === game.js 的 APP_VERSION(畫面版號跟 SW 對得上)",
+  `sw.js=${SW_APP_VERSION} game.js=${APP_VERSION}`);
+const cacheMatch = /^const CACHE_NAME = "([^"]+)";/m.exec(sw);
+const CACHE_NAME = cacheMatch ? cacheMatch[1] : null;
+check(/^breakout-pwa-v\d+$/.test(CACHE_NAME || ""),
+  "★ sw.js 的 CACHE_NAME 是 breakout-pwa-v<數字>(艦隊巡檢工具讀這個格式)", CACHE_NAME);
+check(/v:\s*APP_VERSION\b/.test(sw), "sw.js 回報版號時回的是 APP_VERSION(不是快取名)");
 
 console.log(fail ? `\n[FAIL] version:${fail} 項失敗` : "\n[ok] version:全部通過");
 if (fail) process.exit(1);

@@ -1,4 +1,8 @@
-const CACHE_NAME = "breakout-pwa-v34";
+const CACHE_NAME = "breakout-pwa-v35";
+// 畫面上的版號(= game.js 的 APP_VERSION = 更新紀錄第一筆)。SW 讀不到 game.js,只好帶一份;
+// test/version.mjs 守「這裡 === game.js 的 APP_VERSION」,忘了同步改會當場紅。
+// ⚠ CACHE_NAME 的格式維持 breakout-pwa-v<數字> 不要改:艦隊巡檢工具讀的是它(同支測試也守格式)。
+const APP_VERSION = "2.6.9";
 const ASSETS = [
   "./",
   "./styles.css",
@@ -66,7 +70,8 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// 🏷️ 版號回報(0831 VT1 批次):頁尾徽章問「實際執行中的版本」,答案=本 SW 的快取名。
+// 🏷️ 版號回報(0831 VT1 批次;1113 改回報 APP_VERSION):頁尾那一列問「實際執行中的版本」,
+// 答案跟畫面同一套號碼(2.6.9 這種),頁面比對不一樣才提示重新整理。快取名另附在 cache 欄位備查。
 self.addEventListener('message', function (e) {
-  if (e && e.data === 'GET_VERSION' && e.source) e.source.postMessage({ type: 'SW_VERSION', v: CACHE_NAME });
+  if (e && e.data === 'GET_VERSION' && e.source) e.source.postMessage({ type: 'SW_VERSION', v: APP_VERSION, cache: CACHE_NAME });
 });

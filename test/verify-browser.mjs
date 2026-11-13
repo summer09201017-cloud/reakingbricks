@@ -166,6 +166,31 @@ if (process.env.SHOT) {
 await page.locator('#shareCardCloseBtn').click();
 await page.waitForTimeout(200);
 
+// ── 🏷️ 首頁頁尾「版本 vN(日期)· 更新紀錄」(1113)──────────────────────────────
+// 1113 以前:完整更新紀錄只有遊戲畫面裡才打得開、而遊戲畫面沒有鈕叫它 ⇒ 實際上點不到。
+// ★ 走真的點擊(不是 evaluate 直接呼叫 openVersionPanel),才驗得到「點得到、沒被蓋住」。
+const footer = await page.evaluate(() => {
+  const el = document.getElementById('appVerBadge');
+  if (!el) return { text: '(找不到 #appVerBadge)', h: 0, font: 0, ver: APP_VERSION };
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return { text: el.textContent.trim(), h: Math.round(r.height), font: parseFloat(getComputedStyle(el).fontSize), ver: APP_VERSION };
+});
+check(footer.text.includes(`版本 v${footer.ver}`) && footer.text.includes('更新紀錄'), '首頁頁尾有「版本 vN(日期)· 更新紀錄」', footer.text);
+check(footer.h >= 48 && footer.font >= 16, '頁尾那一列可點高度 ≥48px、字 ≥16px', `${footer.h}px / ${footer.font}px`);
+await page.locator('#appVerBadge').click();
+await page.waitForSelector('#changelogDialog:not([hidden])');
+const changelog = await page.evaluate(() => ({
+  batches: document.querySelectorAll('#versionPanel .version-release').length,
+  firstTag: (document.querySelector('#versionPanel .version-tag') || {}).textContent,
+  ver: APP_VERSION,
+}));
+check(changelog.batches >= 2, '點頁尾那一列 ⇒ 打開完整更新紀錄(至少兩批)', `${changelog.batches} 批`);
+check(changelog.firstTag === `v${changelog.ver}`, '更新紀錄第一批就是目前版本', String(changelog.firstTag));
+await page.locator('#changelogCloseBtn').click();
+await page.waitForTimeout(150);
+check(await page.locator('#changelogDialog').isHidden(), '按「關閉」收得起來');
+
 const manifest = await page.evaluate(async () => {
   const res = await fetch('manifest.webmanifest');
   return res.ok ? JSON.parse((await res.text()).replace(/^﻿/, '')) : null;

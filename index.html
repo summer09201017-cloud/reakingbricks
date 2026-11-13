@@ -16,9 +16,9 @@
     <section id="setupScreen" class="setup-screen" aria-label="遊戲設定">
       <header class="setup-hero">
         <div class="title-group">
-          <p class="eyebrow">Mobile Breakout</p>
           <h1>打磚塊</h1>
-          <p class="subtitle">先設定玩法，按下開始後轉成橫向全螢幕遊玩。</p>
+          <p class="subtitle">用板子把球彈回去，打光磚塊就過關，漏接會扣一條命。</p>
+          <p class="subtitle">手機直向、橫向都能玩；想全螢幕，進遊戲後按畫面上的 ⛶。</p>
         </div>
         <div class="setup-records" aria-label="目前紀錄">
           <p><span>最高分</span><strong id="setupBestScore">0</strong></p>
@@ -96,6 +96,7 @@
         <p class="setup-note">卡關輔助：同一關失誤兩次後自動把板子加寬，過關後收回。</p>
         <p class="setup-note">板子長度：接不到球就調長一點（越長越容易），想要更難就調短。遊戲中的設定選單也能隨時改。</p>
         <p class="setup-note">立體渲染：把磚牆、板子、球換成立體方塊來畫，玩法與紀錄完全不變；需要網路伺服器（不能直接雙擊 index.html），舊裝置若不支援會自動退回原本畫面。</p>
+        <p class="setup-note">用電腦玩的鍵盤操作：← → 或 A、D 移動板子；空白鍵或 Enter 開始／暫停；J 或 F 射擊；P 或 Esc 暫停；R 是 3 秒後重開（倒數中可以取消）。</p>
 
         <div class="volume-settings" aria-label="音量設定">
           <label>
@@ -113,7 +114,7 @@
           <button id="resumeRunBtn" type="button" class="primary-btn resume-btn" hidden>繼續上一局</button>
           <button id="shareDailyBtn" type="button" class="secondary-btn">每日挑戰圖卡</button>
           <button id="editorBtn" type="button" class="secondary-btn">關卡編輯器</button>
-          <button id="versionBtn" type="button" class="secondary-btn">版本資訊</button>
+          <button id="versionBtn" type="button" class="secondary-btn">更新紀錄</button>
           <button id="updateBtn" type="button" class="secondary-btn" hidden>更新遊戲</button>
           <button id="installBtn" type="button" class="secondary-btn" hidden>安裝 APP</button>
         </div>
@@ -204,7 +205,7 @@
         </article>
 
         <article class="info-panel">
-          <h2>排行榜 Top 10</h2>
+          <h2>排行榜 前 10 名</h2>
           <div class="top-score-list" id="topScoreList"></div>
         </article>
 
@@ -213,6 +214,12 @@
           <div class="achievement-list" id="achievementList"></div>
         </article>
       </section>
+
+      <!-- 🏷️ 頁尾版本列(1113):常駐、點得到。字由 game.js 從 CHANGELOG 第一筆填(這裡不寫死版號),
+           點了打開完整更新紀錄。id 沿用 appVerBadge(艦隊必備項檢查認這個 id)。 -->
+      <footer class="app-footer">
+        <button id="appVerBadge" type="button" class="version-footer">更新紀錄</button>
+      </footer>
     </section>
 
     <section id="gameScreen" class="game-screen" aria-label="打磚塊遊戲" hidden>
@@ -249,7 +256,7 @@
 
         <div class="overlay" id="overlay" aria-live="polite">
           <h2 id="overlayTitle">打磚塊</h2>
-          <p id="overlayText">按開始遊玩進入全螢幕。</p>
+          <p id="overlayText">按「繼續」或空白鍵發球。</p>
           <div class="overlay-stats" id="overlayStats" hidden></div>
           <div class="overlay-actions" id="overlayActions" hidden>
             <button id="resumeBtn" type="button">繼續</button>
@@ -294,13 +301,12 @@
               <input id="sfxVolume" type="range" min="0" max="150" step="5" value="100">
             </label>
           </div>
-          <div class="version-panel" id="versionPanel" hidden></div>
         </div>
 
         <div id="rotatePrompt" class="rotate-prompt" hidden>
           <div>
             <h2>請將手機轉為橫向</h2>
-            <p>橫向後會自動進入倒數，畫面會放大成全螢幕遊玩。</p>
+            <p>轉成橫向後會自動倒數開始。</p>
             <p class="rotate-hint">想直向單手玩？回設定頁把「畫面方向」改成「自動」。</p>
           </div>
         </div>
@@ -312,6 +318,31 @@
       </div>
     </section>
   </main>
+
+  <!-- 📜 更新紀錄(1113):原本的 #versionPanel 塞在遊戲畫面的 overlay 裡,首頁點不到;
+       搬到 body 這一層當彈出視窗,首頁頁尾那一列與「更新紀錄」鈕都打開這一份。 -->
+  <div id="changelogDialog" class="modal-backdrop" hidden>
+    <section class="modal-box" role="dialog" aria-modal="true" aria-labelledby="changelogTitle">
+      <header class="modal-head">
+        <h2 id="changelogTitle">更新紀錄</h2>
+        <button id="changelogCloseBtn" type="button" class="secondary-btn">關閉</button>
+      </header>
+      <div class="version-panel" id="versionPanel"></div>
+    </section>
+  </div>
+
+  <!-- ⚠ 危險操作確認(1113):重新開始、清空關卡前先問一次,寫清楚會失去什麼。
+       不用 window.confirm():原生對話框字小、鈕也小,全螢幕時還可能被瀏覽器踢出全螢幕。 -->
+  <div id="confirmDialog" class="modal-backdrop" hidden>
+    <section class="modal-box confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmText">
+      <h2 id="confirmTitle">確定嗎？</h2>
+      <p id="confirmText"></p>
+      <div class="confirm-actions">
+        <button id="confirmOkBtn" type="button" class="primary-btn danger-btn">確定</button>
+        <button id="confirmCancelBtn" type="button" class="secondary-btn">取消</button>
+      </div>
+    </section>
+  </div>
 
   <script src="game.js"></script>
 <script>
@@ -360,47 +391,36 @@
     });
   })();
 </script>
-<div id="appVerBadge" style="position:fixed;right:6px;bottom:4px;font-size:11px;line-height:1;opacity:.55;z-index:2147483000;pointer-events:none;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);font-family:system-ui,sans-serif"></div>
-    <script>
-      /* 🏷️ appVerBadgeFade（0828）：版號徽章是 position:fixed 在右下角，實測會蓋住大廳卡片、
-         遊戲的「難度 / 開始比賽」按鈕——pointer-events:none 只讓「點擊」穿過去，字還是被蓋著。
-         做法：10 秒後淡出。要看版本就重新整理，平常不擋畫面。 */
-      ;(function () {
-        var b = document.getElementById('appVerBadge')
-        if (!b) return
-        b.style.transition = 'opacity .8s'
-        setTimeout(function () {
-          b.style.opacity = '0'
-          setTimeout(function () { b.style.display = 'none' }, 900)
-        }, 10000)
-      })()
-    </script>
 <script>
-/* 🏷️ 版號徽章(0820 全艦隊批次):問「正在控制本頁的 SW」拿版本=你手上真的在跑的那一版,
-   頁面不寫死任何版號(不會漂)。硬重整(Ctrl+F5)的分頁不受 SW 管、問不到 → 誠實顯示退路
-   (股票管家 v134 同款);SW 換版接管時會再問,自動換新。 */
+/* 🏷️ 版號對帳(0820 全艦隊批次 → 1113 改寫)。
+   1113 以前:右下角一顆 11px、半透明、十秒後消失的徽章,印的是 SW 快取名的「v34」,
+   跟「版本資訊」印的「2.6.8」是兩套號碼;第一次造訪還會印一句技術用語。
+   現在:首頁頁尾那一列(#appVerBadge)一律印 game.js 的 APP_VERSION(= 更新紀錄第一筆),
+   畫面上只有一種版號。SW 另外帶一份 APP_VERSION(test/version.mjs 守兩邊相等),
+   這裡問「正在控制本頁的 SW」,答案跟頁面不一樣 ⇒ 這台裝置新舊版混著 ⇒ 白話提示重新整理。
+   問不到(第一次造訪、強制重新整理)就什麼都不說:頁面印的版號本來就是正在跑的這一份。 */
 (function () {
   var el = document.getElementById('appVerBadge');
   if (!el || !('serviceWorker' in navigator) || location.protocol !== 'https:') return;
-  var got = false;
+  if (typeof APP_VERSION !== 'string') return;
   navigator.serviceWorker.addEventListener('message', function (e) {
-    if (e.data && e.data.type === 'SW_VERSION') {
-      got = true;
-      var s = String(e.data.v), m = /-((?:v|nf)?\d+)$/.exec(s);
-      // 0915:徽章原本只有版號、沒有日期 —— 使用者看不出「這是多久以前的版本」。
-      //      版號仍以 SW 回報的為準(那才是真的在跑的那一版),日期取 game.js 的 APP_DATE。
-      var d = (typeof APP_DATE === 'string' && APP_DATE) ? ' · ' + APP_DATE : '';
-      el.textContent = '🏷️ 版本 ' + (m ? m[1] : s) + d + '(這台裝置實際執行中的版本)';
+    if (!e.data || e.data.type !== 'SW_VERSION') return;
+    var swVer = String(e.data.v || '');
+    var note = el.querySelector('.version-footer-note');
+    if (swVer && swVer !== APP_VERSION) {
+      if (!note) {
+        note = document.createElement('span');
+        note.className = 'version-footer-note';
+        el.appendChild(note);
+      }
+      note.textContent = '這台裝置還有舊的暫存，重新整理一次就會換成最新版';
+    } else if (note) {
+      note.remove();
     }
   });
   function ask() { var c = navigator.serviceWorker.controller; if (c) c.postMessage('GET_VERSION'); }
   navigator.serviceWorker.ready.then(ask).catch(function () {});
   navigator.serviceWorker.addEventListener('controllerchange', ask);
-  setTimeout(function () {
-    if (got) return;
-    if (!navigator.serviceWorker.controller) el.textContent = '🏷️ 版本 —(強制重新整理的分頁問不到;普通重整一次即顯示)';
-    else { ask(); setTimeout(function () { if (!got) el.textContent = '🏷️ 版本 —(讀不到,重整一次即顯示)'; }, 1500); }
-  }, 1600);
 })();
 </script>
 </body>

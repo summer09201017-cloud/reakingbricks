@@ -27,7 +27,18 @@
 - 本機排行榜 Top 10、續玩存檔、關卡編輯器與分享碼
 - 立體渲染（3D）：設定裡一個開關，把磚牆／板子／球換成立體方塊來畫，玩法與存檔完全不受影響
 
-## 現況（2026-09-27）
+## 現況（2026-11-13）
+
+- **2026-11-13 v2.6.9 / sw v35**（場:1113-0657-額度排程與熱門站審查-家裡;熱門站審查修紅燈）:
+  首頁頁尾常駐一列「版本 v2.6.9（2026-11-13）· 更新紀錄」(#appVerBadge,字由 game.js 從 CHANGELOG[0] 填),點它或設定頁「更新紀錄」鈕
+  都打開 body 層的 #changelogDialog 完整列表(以前完整面板只在遊戲 overlay 裡、實際點不到);右下角 11px 十秒淡出的舊徽章拿掉。
+  畫面只剩一種版號:sw.js 另帶 `APP_VERSION`(SW 回報它、不再回快取名),`test/version.mjs` ⑥ 守「sw.js APP_VERSION === game.js」與
+  「CACHE_NAME 仍是 breakout-pwa-v<數字>」(艦隊巡檢讀這個格式,別改)。長輩友善:說明字 18px、HUD 字 16px、按鈕/開關/下拉 48px、
+  :focus-visible;「重新開始」(有分數或已過關時)與編輯器「清空」(有畫磚時)先跳 #confirmDialog 寫清後果;遊戲畫面改成 .game-screen 固定 100dvh、
+  畫布吃格線剩餘高度(HUD 變高不再把板子擠出畫面),直向 HUD 改三列;暫停/失命蓋版可捲動、按鈕列排在統計前面。首頁副標改寫玩法、設定頁補鍵盤說明。
+  **沒修**:畫布內最下面那行狀態字(球數/雷射秒數)與浮動分數是畫在 canvas 上的小字、寶物膠囊英文縮寫與 Boss 關名(依指示不動)、
+  暫停畫面裡按讚留言 widget 排在設定開關前面(widget 不動)、740×360 橫向畫布約 8% 非等比(game.js availableHeight 下限 320,改版前就有)。
+- 以下為 09-27 當時的紀錄(**v2.6.6 / sw v32** 之後還有 v2.6.7 / sw v33(09-27)、v2.6.8 / sw v34(10-13 按讚留言)):
 
 **v2.6.6 / sw v32**（09-27 第二件：立體渲染的磚塊字（耐打度數字／特殊磚字母）改成貼在 3D 磚的頂面上，
 不再整排飄在磚牆上方的平面位置。同日稍早 v2.6.5 / sw v30→v31：手機／平板按「開始遊玩」不再自動進全螢幕，Android Chrome 底部那兩行
@@ -80,6 +91,8 @@ v2.6.2 / sw v27 是寶物對齊 + 直向板子貼齊底邊，v2.6.1 / sw v26 是
 - `test/version.mjs`：版本號 ↔ 版本資訊 自我檢查（零相依）。守 `CHANGELOG[0].v === APP_VERSION`、
   批次由新到舊（0915 起 v 嚴格遞減、歷史批次允許同號）、items 沒有 Markdown 星號、`APP_DATE` 仍是推導的、
   畫面有印每批的 v。0927 v2.6.5「只 bump 版本號沒寫版本資訊、線上印舊日期」那顆坑，這支和全域 hook #53 一起擋。
+  1113 加 ⑥：`sw.js` 的 `APP_VERSION` 必須等於 `game.js` 的、`CACHE_NAME` 必須是 `breakout-pwa-v<數字>`（**出新版三處一起改：
+  game.js APP_VERSION + CHANGELOG 最前面一批、sw.js CACHE_NAME +1、sw.js APP_VERSION**）。
 - `test/verify-browser.mjs`：真瀏覽器驗收（`playwright-core` + 系統 Edge／Chrome，可打本機或線上）。
   含直向可玩性與「玩到一半轉手機」的迴歸（磚塊／球／板子有沒有跑到畫面外、下壓進度有沒有被偷走）。
 - `test/verify-browser-3d.mjs`：立體渲染模式的真瀏覽器驗收（另開一支，不跟上面那支混在一起）。
@@ -235,8 +248,19 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 
 | 網址 | 平台 | 誰在用 | 怎麼上線 |
 | --- | --- | --- | --- |
-| `https://bricksbreaking.netlify.app` | Netlify | `sites.json`、艦隊掃描 | `git push` 自動部署 |
+| `https://bricksbreaking.netlify.app` | Netlify | `sites.json`、艦隊掃描 | ⚠ **手動** `netlify deploy --prod`（見下）。2026-10-08 起 Netlify 站已 `stop_builds:true`，**`git push` 不會再上線** |
 | `https://bricksbreaking.pages.dev` | Cloudflare Pages | **作品集 `hfpc-portfolio` 的卡片** | 手動 `wrangler pages deploy` |
+
+Netlify 那份（1113 起照這樣推；用跟 CF 同一個 `bricks-dist` 目錄，同樣在純 ASCII 的暫存目錄下跑）：
+
+```powershell
+Push-Location "C:\Users\<你的帳號>\AppData\Local\Temp"
+netlify deploy --prod --dir "C:\Users\<你的帳號>\AppData\Local\Temp\bricks-dist" --site bricksbreaking
+Pop-Location
+```
+
+⚠ 用 `--dir` 推上去的不是 repo 根目錄，`netlify.toml` 的標頭（manifest 的 Content-Type、icons 長快取）**不會生效**——
+10-13 那次與 1113 都是這樣，線上 manifest 是 `application/octet-stream`。要讓它生效得另外處理（未做，待拍板）。
 
 0915 發現：作品集的卡片一直連 `pages.dev`，而這個 repo 只推 Netlify，
 所以 CF 那份停在 v11（還帶著 0914 才修掉的「裝成 App 開啟 ERR_FAILED」地雷）
