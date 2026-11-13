@@ -251,13 +251,16 @@ https://github.com/summer09201017-cloud/reakingbricks.git
 | `https://bricksbreaking.netlify.app` | Netlify | `sites.json`、艦隊掃描 | ⚠ **手動** `netlify deploy --prod`（見下）。2026-10-08 起 Netlify 站已 `stop_builds:true`，**`git push` 不會再上線** |
 | `https://bricksbreaking.pages.dev` | Cloudflare Pages | **作品集 `hfpc-portfolio` 的卡片** | 手動 `wrangler pages deploy` |
 
-Netlify 那份（1113 起照這樣推；用跟 CF 同一個 `bricks-dist` 目錄，同樣在純 ASCII 的暫存目錄下跑）：
+Netlify 那份（1113 實際這樣推成功；用跟 CF 同一個部署目錄，同樣在純 ASCII 的**空**目錄下跑）：
 
 ```powershell
-Push-Location "C:\Users\<你的帳號>\AppData\Local\Temp"
-netlify deploy --prod --dir "C:\Users\<你的帳號>\AppData\Local\Temp\bricks-dist" --site bricksbreaking
+Push-Location "C:\Users\<你的帳號>\AppData\Local\Temp\<某個空目錄>"
+netlify deploy --prod --no-build --dir "C:\Users\<你的帳號>\AppData\Local\Temp\bricks-dist" --site b4f2f1cc-086a-4bc9-804e-97e0830fcf0b
 Pop-Location
 ```
+
+⚠ 1113 實測:`--site bricksbreaking`(站名)回「Failed retrieving site data … Not Found」,要用上面的 site id;
+不加 `--no-build` 它會先跑 `@netlify/build`。
 
 ⚠ 用 `--dir` 推上去的不是 repo 根目錄，`netlify.toml` 的標頭（manifest 的 Content-Type、icons 長快取）**不會生效**——
 10-13 那次與 1113 都是這樣，線上 manifest 是 `application/octet-stream`。要讓它生效得另外處理（未做，待拍板）。
