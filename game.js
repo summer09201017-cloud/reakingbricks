@@ -103,12 +103,17 @@ const quickRestartBtn = document.getElementById("quickRestartBtn");
 const installHint = document.getElementById("installHint");
 const rotatePrompt = document.getElementById("rotatePrompt");
 
-const APP_VERSION = "2.6.9";
+const APP_VERSION = "2.6.10";
 // 更新內容。date = 該批改動真正進 git 的日期（0915 用 `git log -S` 逐條回溯出來的，不是估的）。
 // ★ 新增一批時把新的 { v, date, items } 放在最前面；APP_DATE 會自動跟著走，不必另外維護一份日期。
 // ★ v = 這一批出貨時的 APP_VERSION（同一天第二輪：把新條目加進今天那一批、v 改成新版本號）。
 //   test/version.mjs 守 CHANGELOG[0].v === APP_VERSION，改了版本號忘了寫這裡會當場紅；hook #53 在 commit/push 時也會問。
 const CHANGELOG = [
+  { v: "2.6.10", date: "2026-11-14", items: [
+    "按鈕、開關、下拉選單和遊戲畫面的排法改回原本的樣子（11/13 那次的放大退掉）；遊戲中上方的分數、按鈕和暫停畫面的字也回到原本大小，畫面不再那麼擠",
+    "首頁的說明文字、排行榜、關卡編輯器的字放大留著；首頁最下面的「版本與更新紀錄」改成一般一行小字，點一下一樣能看到每一次改了什麼",
+    "暫停畫面內容太長時可以往下捲，「繼續」「重新開始」一定按得到（這一項留著）",
+  ] },
   { v: "2.6.9", date: "2026-11-13", items: [
     "首頁最下面多一列「版本與更新紀錄」，一直都在、點一下就能看到每一次改了什麼；設定頁那顆按鈕也改名叫「更新紀錄」，畫面上的版本號統一成一種寫法",
     "說明文字、遊戲中上方的分數與按鈕都放大了，開關、按鈕也加大，眼睛不好或手指比較粗也比較好看、好按",

@@ -106,7 +106,8 @@ button[hidden] {
   font-size: 0.84rem;
 }
 
-/* 1113 長輩友善:首頁的玩法說明與各段說明字 ≥18px(原本吃 body 的 16px)。 */
+/* 1113 長輩友善:首頁的玩法說明與各段說明字 ≥18px(原本吃 body 的 16px)。
+   1114:按鈕放大與重排已退回 1113 之前,這種首頁說明字的放大留著(使用者:字的大小調整可以做)。 */
 .subtitle,
 .panel-heading p,
 .install-hint {
@@ -249,7 +250,7 @@ p {
 }
 
 select {
-  min-height: 48px;
+  min-height: 42px;
   width: 100%;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -328,7 +329,7 @@ button:active {
 }
 
 .legend-chip {
-  min-width: 56px;
+  min-width: 48px;
   border-radius: 8px;
   padding: 4px 8px;
   color: #06213b;
@@ -452,10 +453,6 @@ button:active {
 .game-screen {
   width: 100vw;
   min-height: 100dvh;
-  /* 1113:固定一個視窗高,下面的 .canvas-wrap 撐滿「HUD 以外剩下的」那一格。
-     以前 canvas 高寫死 calc(100dvh - var(--hud-height)),HUD 字放大變高之後
-     畫布底部(板子那一段)會被擠出畫面外;改成吃格線剩餘空間就不必再手算 HUD 高。 */
-  height: 100dvh;
   margin: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -487,7 +484,7 @@ button:active {
 .game-title p {
   margin: 4px 0 0;
   color: #b8dbff;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 800;
   white-space: nowrap;
   overflow: hidden;
@@ -515,18 +512,16 @@ button:active {
 
 .game-actions button {
   /* 0916 手機體檢:實測直向 40px、橫向只有 34px(比 44px 下限少 23%),
-     而「射擊」是快節奏操作鈕 —— 點不準會直接影響玩得動玩不動。1113 再拉到 48px。 */
-  min-height: 48px;
+     而「射擊」是快節奏操作鈕 —— 點不準會直接影響玩得動玩不動。 */
+  min-height: 44px;
   padding: 8px 11px;
 }
 
 .canvas-wrap {
   position: relative;
   width: 100vw;
-  /* 1113:高度交給 .game-screen 的第二格(見上),不再寫死 calc(100dvh - var(--hud-height)) */
-  height: auto;
-  min-height: 0;
-  align-self: stretch;
+  height: calc(100dvh - var(--hud-height));
+  align-self: center;
   justify-self: center;
   overflow: hidden;
   background: #0c1c32;
@@ -602,28 +597,27 @@ body.mode-3d #gameCanvas {
   z-index: 2;
   display: grid;
   gap: 6px;
-  /* 1113:字放大到 16px 後,42vw 在 360 寬只剩 151px 塞不下「圖示+名稱+秒數」 */
-  width: min(260px, 58vw);
+  width: min(260px, 42vw);
   pointer-events: none;
 }
 
 .effect-chip {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(64px, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  padding: 4px 7px;
+  gap: 7px;
+  padding: 5px 8px;
   border: 1px solid #ffffff38;
   border-radius: 8px;
   color: #ffffff;
   background: #061827bb;
-  font-size: 1rem;
+  font-size: 0.78rem;
   font-weight: 900;
   text-shadow: 0 1px 2px #00101f;
 }
 
 .effect-chip i {
-  min-width: 28px;
+  width: 28px;
   border-radius: 6px;
   padding: 2px 4px;
   color: #06213b;
@@ -661,15 +655,18 @@ body.mode-3d #gameCanvas {
 .overlay {
   z-index: 3;
   transition: opacity 250ms ease;
-  /* 1113:暫停／失命畫面的內容(標題+按鈕+設定)在橫向手機會比畫布高。
-     舊的 grid + place-content:center 一超高就上下兩頭被切、捲不到;
+  /* 1113 修(1114 退版時刻意留著,這是「點不到」的 bug 不是放大):10-13 按讚留言 widget 進到暫停畫面後,
+     內容比畫布高 —— 舊的 grid + place-content:center 一超高就上下兩頭被切、捲不到,
+     1114 實測改前版 360×740 與 740×360 的「繼續」都點不到。
      改成直排 flex + 上下兩塊會伸縮的空白:放得下時置中,放不下時從頂端開始、可以往下捲。 */
   display: flex;
   flex-direction: column;
   /* ⚠ 一定要蓋掉上面共用的 place-content:center —— flex 直排時它會變成主軸置中,
-     內容一超高就從頂端溢出(標題跑到 -438px,實測),捲軸也捲不回去。置中交給下面兩塊空白。 */
+     內容一超高就從頂端溢出,捲軸也捲不回去。置中交給下面兩塊空白。 */
   place-content: normal;
-  align-items: center;
+  /* 1114:用 stretch 不用 1113 的 center —— 舊的 grid 會把每一塊撐成同寬(設定區、按鈕列跟按讚區一樣寬、
+     按鈕靠左),stretch 才跟 1113 之前的排法一樣;center 會讓設定區縮窄、按鈕列跑到中間。 */
+  align-items: stretch;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -679,14 +676,6 @@ body.mode-3d #gameCanvas {
   content: "";
   flex: 1 0 0;
 }
-
-/* 直向手機的暫停／失命畫面:本局統計有 10 格(約 350px 高),原本排在按鈕前面,
-   字放大後「繼續 / 重新開始」被擠到第一屏外。⇒ 只把按鈕列提到統計前面,其餘順序不變。 */
-.overlay > .overlay-actions { order: 1; }
-.overlay > .overlay-stats { order: 2; }
-.overlay > #hfpc-feedback { order: 3; }
-.overlay > .settings-menu { order: 4; }
-.overlay::after { order: 5; }
 
 .overlay.hidden {
   opacity: 0;
@@ -702,17 +691,8 @@ body.mode-3d #gameCanvas {
 .overlay p,
 .rotate-prompt p {
   margin: 0;
-  font-size: clamp(1.125rem, 2.2vw, 1.25rem);
+  font-size: clamp(1rem, 2.2vw, 1.18rem);
   font-weight: 800;
-}
-
-/* 暫停／失命／結算那排「繼續 / 重新開始 / 3 秒重開 / 回設定」:原本約 41px ⇒ 48px */
-.overlay-actions {
-  justify-content: center;
-}
-
-.overlay-actions button {
-  min-height: 48px;
 }
 
 .overlay.countdown h2 {
@@ -750,44 +730,29 @@ body.mode-3d #gameCanvas {
 
 .settings-menu {
   display: grid;
-  /* 1113:原本固定 3 欄,開關放大後 360 寬塞不下 ⇒ 依寬度自動 2~3 欄 */
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  width: min(480px, 100%);
+  grid-template-columns: repeat(3, auto);
 }
 
-/* 遊戲中設定選單的開關(1113):原本沒有最小高度、方塊是瀏覽器預設 13px ⇒ 整個 label 48px、方塊 22px */
+/* 1113 對比修正(留著):遊戲中設定選單的開關字原本吃 var(--ink) 深藍,疊在深色蓋版上幾乎看不見 */
 .settings-menu label {
-  min-height: 48px;
-  gap: 8px;
-  padding: 0 4px;
   color: #ffffff;
-  font-size: 1.0625rem;
-  cursor: pointer;
-}
-
-.settings-menu input[type='checkbox'] {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  accent-color: #9fe5ff;
-  cursor: pointer;
 }
 
 .settings-menu .volume-control {
   grid-column: 1 / -1;
-  min-width: 0;
+  min-width: min(360px, 76vw);
   color: #ffffff;
 }
 
 .settings-menu .settings-select {
   grid-column: 1 / -1;
   display: grid;
-  min-width: 0;
+  min-width: min(360px, 76vw);
   color: #ffffff;
 }
 
 .settings-menu .settings-select select {
-  min-height: 48px;
+  min-height: 36px;
 }
 
 /* ── 📜 更新紀錄面板(1113 搬進首頁也打得開的彈出視窗;白底深字)──────────── */
@@ -906,32 +871,27 @@ kbd {
   }
 
   .game-hud {
-    /* 1113:字放大到 16px 後,四格狀態改成「內容要多寬就給多寬」(五位數分數也排得進一列,
-       不會擠到 ⛶ 鈕底下),剩下的寬度才給標題欄(模式名太長會用「…」收尾)。 */
-    grid-template-columns: minmax(80px, 1fr) auto auto;
+    grid-template-columns: minmax(110px, 0.55fr) minmax(270px, 1fr) auto;
     gap: 6px;
     padding-top: max(5px, env(safe-area-inset-top));
     padding-bottom: 5px;
   }
 
   .game-title h1 {
-    font-size: 1.05rem;
+    font-size: 1rem;
   }
 
-  /* 1113:HUD 小字 ≥16px(原本 12.5~13.8px) */
   .game-title p {
-    font-size: 1rem;
+    font-size: 0.78rem;
   }
 
   .stats {
-    gap: 4px;
-    flex-wrap: nowrap;
+    gap: 5px;
   }
 
   .stats p {
-    padding: 5px 5px;
-    font-size: 1rem;
-    white-space: nowrap;
+    padding: 5px 7px;
+    font-size: 0.82rem;
   }
 
   .game-actions {
@@ -940,28 +900,28 @@ kbd {
 
   .game-actions button {
     /* ⚠ 0916 手機健檢紅燈:這裡原本是 34px —— 而「射擊」是要反覆按的鈕,
-       34px 在真手機上按不準。直向那份 0 顆不合格,只有橫向這段沒跟上。1113 再拉到 48px。 */
-    min-height: 48px;
-    padding: 6px 8px;
-    font-size: 1rem;
+       34px 在真手機上按不準。直向那份 0 顆不合格,只有橫向這段沒跟上。 */
+    min-height: 44px;
+    padding: 6px 10px;
+    font-size: 0.86rem;
   }
 
   .progress-wrap {
     top: 8px;
     left: 10px;
     right: 10px;
-    font-size: 1rem;
+    font-size: 0.84rem;
   }
 
   .effect-hud {
     top: 30px;
     left: 10px;
-    width: min(240px, 40vw);
+    width: min(220px, 40vw);
   }
 
   .effect-chip {
-    padding: 3px 6px;
-    font-size: 1rem;
+    padding: 4px 6px;
+    font-size: 0.72rem;
   }
 
   .overlay-stats {
@@ -974,18 +934,14 @@ kbd {
    最小寬度就超過 390，直向一定橫向溢出。改成兩列：上列標題＋狀態，下列五顆鈕。 */
 @media (orientation: portrait) and (max-width: 760px) {
   body.is-game-active {
-    --hud-height: 120px;
+    --hud-height: 104px;
   }
 
-  /* 1113:HUD 字從 12.5~13.4px 放大到 16px 之後,「標題+四格狀態」擠一列在 360 寬放不下
-     (會被 overflow:hidden 切字)⇒ 改成三列:標題+模式 / 四格狀態 / 五顆鈕。
-     畫布高度由 .game-screen 的格線自動扣掉,HUD 變高不會把板子擠出畫面。 */
   body.is-game-active .game-hud {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
     grid-template-areas:
-      "title"
-      "stats"
-      "actions";
+      "title stats"
+      "actions actions";
     row-gap: 6px;
     column-gap: 8px;
     min-height: var(--hud-height);
@@ -994,34 +950,27 @@ kbd {
 
   body.is-game-active .game-title {
     grid-area: title;
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
   }
 
   body.is-game-active .game-title h1 {
-    flex: 0 0 auto;
-    font-size: 1.15rem;
+    font-size: 1.02rem;
   }
 
   body.is-game-active .game-title p {
-    min-width: 0;
-    margin: 0;
-    font-size: 1rem;
+    font-size: 0.78rem;
   }
 
   body.is-game-active .stats {
     grid-area: stats;
-    justify-content: space-between;
-    gap: 4px;
+    justify-content: flex-end;
+    gap: 5px;
     flex-wrap: nowrap;
+    overflow: hidden;
   }
 
   body.is-game-active .stats p {
-    flex: 1 1 auto;
-    padding: 4px 5px;
-    font-size: 1rem;
-    text-align: center;
+    padding: 5px 7px;
+    font-size: 0.8rem;
     white-space: nowrap;
   }
 
@@ -1031,21 +980,26 @@ kbd {
     gap: 5px;
   }
 
-  /* 五顆鈕平分整列寬：360px 扣掉間距約每顆 64px */
+  /* 五顆鈕平分整列寬：390px 扣掉間距約每顆 72px，比橫向那排還好按 */
   body.is-game-active .game-actions button {
     flex: 1 1 0;
     min-width: 0;
-    min-height: 48px;
-    padding: 6px 2px;
-    font-size: 1rem;
+    min-height: 44px;
+    padding: 8px 4px;
+    font-size: 0.84rem;
+  }
+
+  body.is-game-active .canvas-wrap {
+    width: 100vw;
+    height: calc(100dvh - var(--hud-height));
   }
 }
 
-/* 轉向提示裡那句「其實可以直向玩」的出路(1113:原本 13.8px 又變淡 ⇒ 說明字 18px、不變淡) */
+/* 轉向提示裡那句「其實可以直向玩」的出路，字小一點、不要跟標題搶 */
 .rotate-prompt .rotate-hint {
   margin-top: 10px;
-  color: #cfe6ff;
-  font-size: 1.125rem;
+  font-size: 0.86rem;
+  opacity: 0.82;
 }
 
 /* 🏆 排行榜 Top 10（0915）。
@@ -1125,8 +1079,8 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  /* 觸控目標下限(1113:44 → 48px,長輩友善規格) */
-  min-height: 48px;
+  /* 44px 是觸控目標下限：小於這個，孩子在平板上會一直點錯 */
+  min-height: 44px;
   padding: 6px 12px;
   border: 2px solid #ffffff2e;
   border-radius: 10px;
@@ -1213,7 +1167,7 @@ kbd {
 }
 
 #editorCode {
-  min-height: 48px;
+  min-height: 44px;
   padding: 8px 10px;
   border: 2px solid #ffffff2e;
   border-radius: 10px;
@@ -1272,9 +1226,9 @@ kbd {
   gap: 8px;
 }
 
-/* 觸控目標下限(1113:44 → 48px) */
+/* 44px 是觸控目標下限：小於這個，孩子在平板上會一直點錯 */
 .share-card-actions button {
-  min-height: 48px;
+  min-height: 44px;
 }
 
 @media (max-width: 480px) {
@@ -1325,18 +1279,18 @@ kbd {
 /* ③ 🟠 觸控目標:select 42px、音量 slider 只有 13~16px 高(瀏覽器預設)。
       slider 拉高到 44px,但**軌道視覺維持細的** —— 變高的是可按範圍,不是外觀。 */
 select {
-  min-height: 48px;
+  min-height: 44px;
 }
 
 .settings-menu .settings-select select {
-  min-height: 48px;
+  min-height: 44px;
 }
 
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 48px;
+  height: 44px;
   background: transparent;
   cursor: pointer;
 }
@@ -1380,7 +1334,7 @@ input[type='range']::-moz-range-thumb {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 48px;
+  min-height: 44px;
   font-size: 1.0625rem;
   padding: 0 4px;
   cursor: pointer;
@@ -1394,14 +1348,17 @@ input[type='range']::-moz-range-thumb {
   cursor: pointer;
 }
 
-/* 首頁那排次要鈕量到 43px —— 差 1px,順手補齊(DEYI 沒點名,但在同一條紅線下)。1113 再拉到 48px。 */
+/* 首頁那排次要鈕量到 43px —— 差 1px,順手補齊(DEYI 沒點名,但在同一條紅線下) */
 .secondary-btn {
-  min-height: 48px;
+  min-height: 44px;
 }
 
-/* ── 1113 長輩友善補強 ────────────────────────────────────────────────────── */
+/* ── 1113 補的(1114 退版時留下的部分)──────────────────────────────────────
+   ⚠ 1114 使用者指示:這一站以後不要主動放大按鈕或改排法。1113 的 48px 按鈕/開關/下拉、
+   遊戲畫面固定一個視窗高、直向 HUD 三列、HUD 字 16px 都已退回 1113 之前;下面只留
+   焦點框、頁尾版本列(一般一行字)、更新紀錄與確認兩個彈出視窗。 */
 
-/* 鍵盤操作時看得到焦點在哪(長輩常用 Tab,也有人用輔具)。淺色頁用深藍框,遊戲畫面用亮黃框。 */
+/* 鍵盤操作時看得到焦點在哪。淺色頁用深藍框,遊戲畫面用亮黃框。outline 不佔版面、不改排法。 */
 button:focus-visible,
 select:focus-visible,
 input:focus-visible {
@@ -1415,7 +1372,8 @@ input:focus-visible {
   outline-color: #ffe084;
 }
 
-/* 🏷️ 首頁頁尾:「版本 vN(日期)· 更新紀錄」——常駐、不淡出、字 18px、可點高度 ≥48px */
+/* 🏷️ 首頁頁尾:「版本 vN(日期)· 更新紀錄」——常駐、點得到。
+   1114:1113 做成 18px 字、48px 高的大鈕,退回成一般一行字(淡底小框是為了深色「霓虹」主題也看得到字)。 */
 .app-footer {
   display: flex;
   justify-content: center;
@@ -1423,17 +1381,16 @@ input:focus-visible {
 }
 
 .version-footer {
-  display: block;
-  width: min(560px, 100%);
-  min-height: 48px;
-  padding: 10px 16px;
+  display: inline-block;
+  max-width: 100%;
+  padding: 4px 12px;
   border: 1px solid var(--panel-border);
   color: var(--ink);
   background: var(--panel);
-  box-shadow: 0 6px 16px var(--panel-shadow);
-  font-size: 1.125rem;
-  font-weight: 800;
-  line-height: 1.45;
+  box-shadow: none;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.4;
   text-align: center;
 }
 
@@ -1447,9 +1404,8 @@ input:focus-visible {
 
 .version-footer-note {
   display: block;
-  margin-top: 4px;
+  margin-top: 2px;
   color: #8a4b00;
-  font-size: 1rem;
 }
 
 /* 彈出視窗(更新紀錄／危險操作確認):蓋在最上層,遊戲畫面全螢幕時也看得到 */
@@ -1527,10 +1483,10 @@ input:focus-visible {
   gap: 10px;
 }
 
+/* 按鈕高度跟站上其他鈕一樣(primary 48、secondary 44),不另外放大 */
 .confirm-actions button {
   flex: 1 1 160px;
   min-width: 0;
-  min-height: 48px;
 }
 
 .danger-btn {

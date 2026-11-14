@@ -177,7 +177,9 @@ const footer = await page.evaluate(() => {
   return { text: el.textContent.trim(), h: Math.round(r.height), font: parseFloat(getComputedStyle(el).fontSize), ver: APP_VERSION };
 });
 check(footer.text.includes(`版本 v${footer.ver}`) && footer.text.includes('更新紀錄'), '首頁頁尾有「版本 vN(日期)· 更新紀錄」', footer.text);
-check(footer.h >= 48 && footer.font >= 16, '頁尾那一列可點高度 ≥48px、字 ≥16px', `${footer.h}px / ${footer.font}px`);
+// 1114 改寫:1113 這條要求頁尾 ≥48px 高、字 ≥16px;使用者 2026-11-14 指示按鈕放大全部退回、
+// 頁尾只留「一般一行字」⇒ 反過來擋「不要再被放大回 1113 那種大鈕」(一行字約 30px 高)。
+check(footer.h > 0 && footer.h < 44, '頁尾那一列是一般一行字(不是 1113 那種 48px 大鈕;使用者 1114 指示)', `${footer.h}px / ${footer.font}px`);
 await page.locator('#appVerBadge').click();
 await page.waitForSelector('#changelogDialog:not([hidden])');
 const changelog = await page.evaluate(() => ({
@@ -466,7 +468,8 @@ check(Boolean(startState && startState.h >= 44), "橫向首頁:開始鈕 ≥44px
 
 const smallLand = await lp.evaluate(() => {
   const bad = [];
-  for (const el of document.querySelectorAll("button, select, .setup-toggles label")) {
+  // #appVerBadge(頁尾版本列)刻意是一般一行字,不算觸控大鈕(1114 使用者指示,見上面頁尾那段)
+  for (const el of document.querySelectorAll("button:not(#appVerBadge), select, .setup-toggles label")) {
     if (el.hidden) continue;
     const r = el.getBoundingClientRect();
     if (r.height > 0 && r.height < 44) bad.push(`${(el.textContent || "").trim().slice(0, 8)}=${Math.round(r.height)}`);

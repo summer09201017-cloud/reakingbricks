@@ -1,8 +1,8 @@
-const CACHE_NAME = "breakout-pwa-v35";
+const CACHE_NAME = "breakout-pwa-v36";
 // 畫面上的版號(= game.js 的 APP_VERSION = 更新紀錄第一筆)。SW 讀不到 game.js,只好帶一份;
 // test/version.mjs 守「這裡 === game.js 的 APP_VERSION」,忘了同步改會當場紅。
 // ⚠ CACHE_NAME 的格式維持 breakout-pwa-v<數字> 不要改:艦隊巡檢工具讀的是它(同支測試也守格式)。
-const APP_VERSION = "2.6.9";
+const APP_VERSION = "2.6.10";
 const ASSETS = [
   "./",
   "./styles.css",
